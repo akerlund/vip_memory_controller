@@ -1,0 +1,21 @@
+[submodule "submodules/vip_dram"]
+	path = submodules/vip_dram
+	url = git@github.com:akerlund/vip_dram.git
+[submodule "submodules/vip_memory"]
+	path = submodules/vip_memory
+	url = git@github.com:akerlund/vip_memory.git
+[submodule "submodules/vip_chi_agent"]
+	path = submodules/vip_chi_agent
+	url = git@github.com:akerlund/vip_chi_agent.git
+[submodule "submodules/vip_axi4_agent"]
+	path = submodules/vip_axi4_agent
+	url = git@github.com:akerlund/vip_axi4_agent.git
+[submodule "submodules/vip_report_server"]
+	path = submodules/vip_report_server
+	url = git@github.com:akerlund/vip_report_server.git
+[submodule "submodules/vip_gauss"]
+	path = submodules/vip_gauss
+	url = git@github.com:akerlund/vip_gauss.git
+[submodule "submodules/vip_clk_rst_agent"]
+	path = submodules/vip_clk_rst_agent
+	url = git@github.com:akerlund/vip_clk_rst_agent.git
