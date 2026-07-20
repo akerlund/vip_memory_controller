@@ -1,0 +1,108 @@
+CAPI=2:
+name: "akerlund::vip_mc_example:0"
+description: "Memory-controller VIP example testbench (AXI4 + CHI slices)"
+
+filesets:
+  tb:
+    files:
+      # Compilation unit: entry point compiled directly by the simulator
+      - tb/tb.svh
+      # Include files: accessed via +incdir+ (included by tb.svh or the tb/tc pkgs).
+      # The two vip_mc_*_connect modules that tb.svh also includes live in the
+      # vip_mc core and are reached through its +incdir+.
+      - tb/vip_mc_equiv_model.sv:                 {is_include_file: true}
+      - tb/vip_mc_equiv_program.sv:               {is_include_file: true}
+      - tb/mc_scoreboard.sv:                      {is_include_file: true}
+      - tb/vip_mc_tb_env.sv:                      {is_include_file: true}
+      - tb/vip_mc_chi_tb_env.sv:                  {is_include_file: true}
+      - tb/vip_mc_mixed_tb_env.sv:                {is_include_file: true}
+      - tb/vip_mc_narrow_axi4_tb_env.sv:          {is_include_file: true}
+      - tb/vip_mc_tb_pkg.sv:                      {is_include_file: true}
+      - tc/vip_mc_neutral_base_test.sv:           {is_include_file: true}
+      - tc/vip_mc_base_test.sv:                   {is_include_file: true}
+      - tc/tc_vip_mc_axi4_agent.sv:               {is_include_file: true}
+      - tc/tc_vip_mc_axi4_exclusive.sv:           {is_include_file: true}
+      - tc/tc_vip_mc_axi4_fixed.sv:               {is_include_file: true}
+      - tc/tc_vip_mc_axi4_read_multi_id.sv:       {is_include_file: true}
+      - tc/tc_vip_mc_preset_sweep.sv:             {is_include_file: true}
+      - tc/tc_vip_mc_axi4_ooo_inter_id.sv:        {is_include_file: true}
+      - tc/tc_vip_mc_axi4_fr_fcfs_mixed_rd_wr.sv: {is_include_file: true}
+      - tc/tc_vip_mc_axi4_page_hit_streak.sv:     {is_include_file: true}
+      - tc/tc_vip_mc_telemetry_counters.sv:       {is_include_file: true}
+      - tc/tc_vip_mc_status_probe.sv:             {is_include_file: true}
+      - tc/tc_vip_mc_axi4_unsupported_reject.sv:  {is_include_file: true}
+      - tc/tc_vip_mc_axi4_multi_port.sv:          {is_include_file: true}
+      - tc/tc_vip_mc_axi4_outstanding_limit.sv:   {is_include_file: true}
+      - tc/tc_vip_mc_axi4_aw_backpressure.sv:     {is_include_file: true}
+      - tc/tc_vip_mc_axi4_user_passthrough.sv:    {is_include_file: true}
+      - tc/tc_vip_mc_axi4_wready_backpressure.sv: {is_include_file: true}
+      - tc/tc_vip_mc_axi4_wrap.sv:                {is_include_file: true}
+      - tc/tc_vip_mc_axi4_narrow_unaligned.sv:    {is_include_file: true}
+      - tc/tc_vip_mc_axi4_burst.sv:               {is_include_file: true}
+      - tc/tc_vip_mc_axi4_bresp_backpressure.sv:  {is_include_file: true}
+      - tc/tc_vip_mc_axi4_rsp_backpressure.sv:    {is_include_file: true}
+      - tc/tc_vip_mc_axi4_single_beat.sv:         {is_include_file: true}
+      - tc/tc_vip_mc_axi4_write_coalesce.sv:      {is_include_file: true}
+      - tc/tc_vip_mc_axi4_read_pipeline.sv:       {is_include_file: true}
+      - tc/tc_vip_mc_observability.sv:            {is_include_file: true}
+      - tc/tc_vip_mc_ecc_slverr.sv:               {is_include_file: true}
+      - tc/tc_vip_mc_fr_fcfs_starvation_cap.sv:   {is_include_file: true}
+      - tc/tc_vip_mc_rd_wr_grouping.sv:           {is_include_file: true}
+      - tc/tc_vip_mc_cfg.sv:                      {is_include_file: true}
+      - tc/tc_vip_mc_refresh.sv:                  {is_include_file: true}
+      - tc/tc_vip_mc_refresh_deferred.sv:         {is_include_file: true}
+      - tc/tc_vip_mc_init_delay.sv:               {is_include_file: true}
+      - tc/tc_vip_mc_reset_recovery.sv:           {is_include_file: true}
+      - tc/tc_vip_mc_multi_rank.sv:               {is_include_file: true}
+      - tc/tc_vip_mc_refresh_collision.sv:        {is_include_file: true}
+      - tc/tc_vip_mc_qos_scheduling.sv:           {is_include_file: true}
+      - tc/tc_vip_mc_qos_aging.sv:                {is_include_file: true}
+      - tc/vip_mc_chi_base_test.sv:               {is_include_file: true}
+      - tc/tc_vip_mc_chi_d_write_read.sv:         {is_include_file: true}
+      - tc/tc_vip_mc_chi_d_read.sv:               {is_include_file: true}
+      - tc/tc_vip_mc_chi_d_write_ptl.sv:          {is_include_file: true}
+      - tc/tc_vip_mc_chi_d_decerr.sv:             {is_include_file: true}
+      - tc/tc_vip_mc_chi_d_combined_write.sv:     {is_include_file: true}
+      - tc/tc_vip_mc_chi_d_unsupported.sv:        {is_include_file: true}
+      - tc/tc_vip_mc_chi_d_persist.sv:            {is_include_file: true}
+      - tc/tc_vip_mc_chi_d_reject.sv:             {is_include_file: true}
+      - tc/tc_vip_mc_chi_e_write_read.sv:         {is_include_file: true}
+      - tc/tc_vip_mc_chi_e_write_zero.sv:         {is_include_file: true}
+      - tc/tc_vip_mc_chi_e_read_sep.sv:           {is_include_file: true}
+      - tc/tc_vip_mc_equiv_axi4.sv:               {is_include_file: true}
+      - tc/tc_vip_mc_equiv_chi.sv:                {is_include_file: true}
+      - tc/tc_vip_mc_mixed_concurrent.sv:         {is_include_file: true}
+      - tc/tc_vip_mc_narrow_axi4.sv:              {is_include_file: true}
+      - tc/tc_vip_mc_chi_d_narrow.sv:             {is_include_file: true}
+      - tc/vip_mc_tc_pkg.sv:                      {is_include_file: true}
+      - tb/vip_mc_tb_top.sv:                      {is_include_file: true}
+    file_type: systemVerilogSource
+    depend:
+      - "akerlund::vip_mc:1.0.0"
+      - "akerlund::vip_chi_agent:1.0.0"
+      - "akerlund::vip_axi4_agent:1.1.0"
+      - "akerlund::vip_clk_rst_agent:0"
+      - "akerlund::vip_gauss:1.0.0"
+      - "akerlund::vip_report_server:0"
+
+parameters:
+  # Compile the opt-in CHI front-end; the example exercises both the AXI4 and CHI
+  # slices, so the whole build is gated on VIP_MC_ENABLE_CHI (and pulls in vip_chi).
+  VIP_MC_ENABLE_CHI:
+    datatype: bool
+    paramtype: vlogdefine
+    default: true
+
+targets:
+  default:
+    toplevel: vip_mc_tb_top
+    filesets:
+      - tb
+    parameters:
+      - VIP_MC_ENABLE_CHI
+    tools:
+      vcs:
+        vcs_options:
+          - -timescale=1ns/1ps
+          - -ntb_opts
+          - uvm-1.2
