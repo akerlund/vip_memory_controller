@@ -1,0 +1,51 @@
+CAPI=2:
+name: "akerlund::vip_mc:1.0.0"
+description: "UVM memory-controller VIP (AXI4 host front-end, opt-in CHI)"
+
+filesets:
+  tb:
+    files:
+      # Compilation unit: entry point compiled directly by the simulator
+      - sv/vip_mc.svh
+      # Include files: accessed via +incdir+ (included by the .svh or vip_mc_pkg).
+      # The CHI-specific files compile only under VIP_MC_ENABLE_CHI; they stay in
+      # the incdir so a consumer that sets the macro (see the example) can reach
+      # them, but the AXI4-only core carries no vip_chi dependency.
+      - sv/vip_mc_axi4_types_pkg.sv:   {is_include_file: true}
+      - sv/vip_mc_types_pkg.sv:        {is_include_file: true}
+      - sv/vip_mc_axi4_if.sv:          {is_include_file: true}
+      - sv/vip_mc_status_if.sv:        {is_include_file: true}
+      - sv/vip_mc_chi_if.sv:           {is_include_file: true}
+      - sv/vip_mc_axi4_cfg.sv:         {is_include_file: true}
+      - sv/vip_mc_chi_cfg.sv:          {is_include_file: true}
+      - sv/vip_mc_port_runtime_cfg.sv: {is_include_file: true}
+      - sv/vip_mc_config.sv:           {is_include_file: true}
+      - sv/vip_mc_vif_holder.sv:       {is_include_file: true}
+      - sv/vip_mc_axi4_vif_holder.sv:  {is_include_file: true}
+      - sv/vip_mc_env_cfg.sv:          {is_include_file: true}
+      - sv/vip_mc_status_snapshot.sv:  {is_include_file: true}
+      - sv/vip_mc_cmd_entry.sv:        {is_include_file: true}
+      - sv/vip_mc_activity_fifo.sv:    {is_include_file: true}
+      - sv/vip_mc_cmd_queue.sv:        {is_include_file: true}
+      - sv/vip_mc_fe_base.sv:          {is_include_file: true}
+      - sv/vip_mc_refresh.sv:          {is_include_file: true}
+      - sv/vip_mc_backend.sv:          {is_include_file: true}
+      - sv/vip_mc_axi4_driver.sv:      {is_include_file: true}
+      - sv/vip_mc_chi_cmd_entry.sv:    {is_include_file: true}
+      - sv/vip_mc_chi_vif_holder.sv:   {is_include_file: true}
+      - sv/vip_mc_chi_driver.sv:       {is_include_file: true}
+      - sv/vip_mc.sv:                  {is_include_file: true}
+      - sv/vip_mc_pkg.sv:              {is_include_file: true}
+      # Connect modules: not part of vip_mc_pkg; included by a consumer top
+      # (see the example tb.svh) via this core's +incdir+.
+      - sv/vip_mc_axi4_connect.sv: {is_include_file: true}
+      - sv/vip_mc_chi_connect.sv:  {is_include_file: true}
+    file_type: systemVerilogSource
+    depend:
+      - "akerlund::vip_memory:2.0.0"
+      - "akerlund::vip_dram:1.0.0"
+
+targets:
+  default:
+    filesets:
+      - tb
