@@ -1265,7 +1265,7 @@ emitting immediately, up to `refresh_max_deferred` (default 8), then drains the
 whole debt in a forced catch-up burst — same **average** refresh rate as
 `PERIODIC`, but bursty arrival. It exposes `get_deferred_debt` /
 `get_peak_deferred_debt` / `get_deferred_catchup_count`, and `flush()` clears
-them on reset. `tc_vip_mc_refresh_deferred` covers it. Opportunistic pull-in on
+them on reset. `tc_mc_refresh_deferred` covers it. Opportunistic pull-in on
 device idle (coordinating the postpone/force decision with FR-FCFS picks)
 remains §11 follow-on.
 
@@ -1727,7 +1727,7 @@ counters above; all return 0 unless `perf_counters_enabled` and reset per epoch 
 - `get_observed_reorder_count()` — completions whose `admit_order` was older than
   one already retired, i.e. the emergent inter-ID out-of-order retirements (§4.3).
   Zero for a strictly in-order stream; ≥ 1 whenever a younger request completes
-  ahead of an older one (see `tc_vip_mc_axi4_ooo_inter_id`).
+  ahead of an older one (see `tc_mc_axi4_ooo_inter_id`).
 - `get_mean_latency_ns()` / `get_min_latency_ns()` / `get_max_latency_ns()` /
   `get_latency_sample_count()` — completion latency (admit → last device beat)
   across every completed host request (primary and each coalesced secondary).
@@ -2079,7 +2079,7 @@ This keeps the probe additive: one optional interface, one publisher, one
 shared snapshot, and zero changes to the functional host/device contract.
 
 **Status-probe requirements.** The probe is defined by the following contract, and
-a sanity regression (`tc_vip_mc_status_probe`) exercises it under queueing,
+a sanity regression (`tc_mc_status_probe`) exercises it under queueing,
 refresh, and backpressure:
 
 - The frozen v1 `vip_mc_status_if` contract above keeps a protocol-neutral core
@@ -2453,8 +2453,8 @@ than hand-writing a CHI BFM (CHI decision 7). All three stages run in the single
   the common memory-target subset; issue-delta tests prove that D-only/E-only
   legality checks stay in the CHI layer and do not leak into the backend.
 3. **Protocol-equivalence tests third** — a protocol-neutral golden model
-  (`vip_mc_equiv_model`) and one deterministic program (`vip_mc_equiv_program`)
-  are replayed through AXI4, CHI-D, and CHI-E fronts (`tc_vip_mc_equiv_axi4` /
+  (`mc_equiv_model`) and one deterministic program (`mc_equiv_program`)
+  are replayed through AXI4, CHI-D, and CHI-E fronts (`tc_mc_equiv_axi4` /
   `_chi_d` / `_chi_e`), each checked against a fresh model. All three matching the
   same model proves byte-identical device state and read data across the
   protocols. (Timing/grant-order equivalence stays out of scope here — the
@@ -2543,7 +2543,7 @@ been bypassed `cap` times the selector force-serves the oldest such entry (an FC
 override) instead of the winner — capping each request's reordering to at most
 `cap` bypasses. It is a within-class bound, orthogonal to `qos_aging_ns` (which
 promotes across classes); overrides are counted by `get_fr_fcfs_forced_count()`
-and exercised by `tc_vip_mc_fr_fcfs_starvation_cap`.
+and exercised by `tc_mc_fr_fcfs_starvation_cap`.
 
 **Turnaround-aware grouping** (`cfg.rd_wr_grouping_enable`, default `FALSE`).
 Predicted-completion ranking is already *implicitly* turnaround-aware — a
@@ -2564,9 +2564,9 @@ direction after that many consecutive same-direction issues so the opposite
 direction cannot be starved (a within-direction bound distinct from
 `fr_fcfs_starvation_cap`). Issued RD↔WR turnarounds are counted by
 `get_bus_turnaround_count()` and grouping overrides of the readiness winner by
-`get_rd_wr_grouped_count()`; exercised by `tc_vip_mc_rd_wr_grouping`.
+`get_rd_wr_grouped_count()`; exercised by `tc_mc_rd_wr_grouping`.
 
-`tc_mc_ooo_inter_id` is the grey-box demonstration: precondition one request as a
+`tc_mc_axi4_ooo_inter_id` is the grey-box demonstration: precondition one request as a
 miss and another as a hit, keep both in the queue together behind a held device
 window, and verify the backend grants the hit first and the AXI responses follow
 that device-timing-driven reorder. (`vip_mc_refresh` reserves a slot for
@@ -2581,7 +2581,7 @@ host write (`vip_mc_cmd_queue::try_coalesce_write` / `overlay_write`; backend
 `write()` fan-out; `get_coalesced_write_count`). Exercising it needs two same-line
 writes co-pending, which the `vip_axi4` manager produces only via its pipelined
 write path (`cfg.wr_outstanding_max > 1`, see the vip_axi4 agent).
-`tc_vip_mc_axi4_write_coalesce` drives two same-line writes concurrently via
+`tc_mc_axi4_write_coalesce` drives two same-line writes concurrently via
 `vip_axi4_pipelined_seq` (`set_pipelined_send`) behind a held device window and
 checks one device write grant + two BRESPs + correct overlay. The scoreboard is
 coalescing-unaware (one device access completes two host writes), so it is off in
@@ -2607,7 +2607,7 @@ Two layers make up the design:
   double-bit error keeps its poisoned bytes and becomes a bus `SLVERR`, with
   `get_ecc_corrected_count()` / `get_ecc_uncorrectable_count()` tallies. With ECC
   off the corrupted bytes pass through as OKAY (silent data corruption). See
-  `tc_vip_mc_ecc_slverr`.
+  `tc_mc_ecc_slverr`.
 
 Decode errors (`DECERR`) are not part of this — they are real MC behavior modeled
 in §4.3/§4.4. Probabilistic bus-level injection stays excluded by design. Deferred
@@ -2758,41 +2758,41 @@ dependency (§1, §2 rule 1).
 testbench/sv/
 ├── tb/
 │   ├── tb.svh
-│   ├── vip_mc_tb_pkg.sv
-│   ├── vip_mc_tb_top.sv                 (clk_rst_if + vip_axi4_if man_vif +
+│   ├── mc_tb_pkg.sv
+│   ├── mc_tb_top.sv                 (clk_rst_if + vip_axi4_if man_vif +
 │   │                                     vip_mc_axi4_if mc_vif + optional
 │   │                                     vip_mc_status_if status_vif +
 │   │                                     vip_mc_axi4_connect)
-│   ├── vip_mc_tb_env.sv                 (clk_rst_agent + man_agent[] + vip_mc +
+│   ├── mc_tb_env.sv                 (clk_rst_agent + man_agent[] + vip_mc +
 │   │                                     vip_dram + mc_scoreboard +
 │   │                                     env_cfg.status_vif handoff)
 │   └── mc_scoreboard.sv                 (predictor-vs-observed AXI4 latency)
 ├── tc/
-│   ├── vip_mc_tc_pkg.sv
-│   ├── vip_mc_base_test.sv
-│   ├── tc_vip_mc_axi4_agent.sv          (AXI4 front-end behavior tests:
-│   ├── tc_vip_mc_axi4_burst.sv           tc_vip_mc_axi4_<feature> — bursts,
-│   ├── tc_vip_mc_axi4_exclusive.sv       exclusive, backpressure,
+│   ├── mc_tc_pkg.sv
+│   ├── mc_base_test.sv
+│   ├── tc_mc_axi4_agent.sv          (AXI4 front-end behavior tests:
+│   ├── tc_mc_axi4_burst.sv           tc_mc_axi4_<feature> — bursts,
+│   ├── tc_mc_axi4_exclusive.sv       exclusive, backpressure,
 │   ├── …                                 outstanding limits, reject, …)
-│   ├── tc_vip_mc_cfg.sv                 (MC-level tests: tc_vip_mc_<feature> —
-│   ├── tc_vip_mc_refresh.sv              cfg, refresh, reset-recovery,
-│   ├── tc_vip_mc_multi_rank.sv           multi-rank, qos, preset-sweep,
-│   ├── tc_vip_mc_status_probe.sv         status-probe, telemetry, …)
-│   └── tc_vip_mc_telemetry_counters.sv
+│   ├── tc_mc_cfg.sv                 (MC-level tests: tc_mc_<feature> —
+│   ├── tc_mc_refresh.sv              cfg, refresh, reset-recovery,
+│   ├── tc_mc_multi_rank.sv           multi-rank, qos, preset-sweep,
+│   ├── tc_mc_status_probe.sv         status-probe, telemetry, …)
+│   └── tc_mc_telemetry_counters.sv
 ```
 
 There is no separate virtual-sequencer component: the base test drives the stock
 manager agents directly and does inline observation, while `mc_scoreboard`
 provides the predictor-vs-observed latency check (§13.2). Clock and reset are
-owned by a `clk_rst_agent` in `vip_mc_tb_env` (driven by a `reset_sequence`
-started from `vip_mc_base_test::run_phase`), not by hand-rolled logic in the top.
+owned by a `clk_rst_agent` in `mc_tb_env` (driven by a `reset_sequence`
+started from `mc_base_test::run_phase`), not by hand-rolled logic in the top.
 
-File naming: `vip_mc` prefix for TB files (`vip_mc_tb_env.sv`,
-`vip_mc_tb_top.sv`, …; the scoreboard keeps its `mc_scoreboard.sv` name),
-`tc_vip_mc_axi4_<feature>.sv` for AXI4-front-end tests and
-`tc_vip_mc_<feature>.sv` for MC-level tests, class-name identical to file-name.
+File naming: testbench support files use the `mc_` prefix (`mc_tb_env.sv`,
+`mc_tb_top.sv`, `mc_scoreboard.sv`, ...), AXI4-front-end tests use
+`tc_mc_axi4_<feature>.sv`, and MC-level tests use `tc_mc_<feature>.sv`; class
+names match file names.
 
-**`vip_mc_tb_top` interface wiring (B1).** The top instantiates two interfaces on
+**`mc_tb_top` interface wiring (B1).** The top instantiates two interfaces on
 the shared `clk_rst_if` and bridges them with the connector:
 
 ```sv
@@ -2838,7 +2838,7 @@ vip_mc #(.DRAM_CFG_P(VIP_DRAM_CFG_C), .N_PORTS(2), .PORTS(PORTS)) u_mc(...);
 // register_vif(0,h0)/register_vif(1,h1), env_cfg.apply(...) — §2.2. No per-port
 // "vif_portK" string keys.
 
-// ---- "1x AXI4 + 1x CHI" (tc_vip_mc_mixed_concurrent; D or E in PORTS_MIX[1].chi.issue) ----
+// ---- "1x AXI4 + 1x CHI" (tc_mc_mixed_concurrent; D or E in PORTS_MIX[1].chi.issue) ----
 // NOTE: MIXED_PORTS_C fills BOTH .axi4 and .chi on every entry
 // (representative-cfg convention, §2.1) — the '0 stubs below are schematic only.
 localparam vip_mc_port_cfg_t PORTS_MIX [2] = '{
@@ -2896,7 +2896,7 @@ same-`$time`, per the §5.6 predict-ordering rule.)
 | 2  | `tc_mc_page_hit_streak`          | Manager issues 64-beat INCR burst same row; throughput governed by `tCCD_L` per column access (**not** `tBL`, M2); AXI4 timing matches `dram.predict()`. |
 | 3  | `tc_mc_refresh_emission_cadence` | Run for `N * tREFI`; verify `dram.get_refresh_count() == N * n_ranks` within ±1 (M5).                         |
 | 4  | `tc_mc_decerr_range`             | Call `cfg.axi4.add_decerr_range(lo,hi)`; verify B/R `RESP == DECERR` inside, `OKAY` outside.                  |
-| 5  | `tc_mc_ooo_inter_id`             | Interleaved different-ID reads, backend FR-FCFS / miss-queue selection chooses a later hit ahead of an earlier miss; per-ID order preserved, **inter-ID** order shuffles emergently from that pre-issue selection — no separate post-issue reorder knob. |
+| 5  | `tc_mc_axi4_ooo_inter_id`        | Interleaved different-ID reads, backend FR-FCFS / miss-queue selection chooses a later hit ahead of an earlier miss; per-ID order preserved, **inter-ID** order shuffles emergently from that pre-issue selection — no separate post-issue reorder knob. |
 | 6  | `tc_mc_outstanding_limit`        | Saturate `max_outstanding_rd` reads; `arready` deasserts when queue full, re-asserts on drain.                |
 | 7  | `tc_mc_axi4_4k_boundary`         | Bursts that cross 4 KB; verify `vip_mc` returns DECERR on all beats and bumps `get_4k_violation_count()`.     |
 | 8  | `tc_mc_preset_sweep`             | **Consistency/smoke check, not timing-correctness.** Run `tc_mc_smoke` once per `vip_dram` timing preset (DDR3/DDR4/LPDDR4/DDR5/IDEAL); asserts MC↔device agree (observed = `predict()`) and nothing wedges. Only **DDR4-3200 CL22** is timing-authoritative (vip_dram); the other presets are first-pass approximations, so absolute-latency realism is **not** asserted here. |
@@ -2979,34 +2979,34 @@ parallel of `vip_mc_axi4_cfg`.
 The CHI demonstration lives in the single [`testbench/sv`](../testbench/sv/)
 example (built with `+define+VIP_MC_ENABLE_CHI`), alongside the AXI4 suite: a
 self-contained one-port CHI `vip_mc` instance (built inside the test, mirroring the
-`tc_vip_mc_multi_rank` pattern) driven by a stock `vip_chi` RN-I manager through the
-connector wired in `vip_mc_tb_top`. Directed coverage:
+`tc_mc_multi_rank` pattern) driven by a stock `vip_chi` RN-I manager through the
+connector wired in `mc_tb_top`. Directed coverage:
 
-- **CHI-D:** `tc_vip_mc_chi_d_write_read` (data verified through the device),
-  `tc_vip_mc_chi_d_read` (well-formed CompData), `tc_vip_mc_chi_d_write_ptl`
-  (WriteNoSnpPtl per-byte merge), `tc_vip_mc_chi_d_decerr` (read+write
-  NONDATA_ERROR), `tc_vip_mc_chi_d_combined_write` (`split_write_rsp=0`
-  CompDBIDResp path), `tc_vip_mc_chi_d_unsupported` (raw CleanSharedPersist
+- **CHI-D:** `tc_mc_chi_d_write_read` (data verified through the device),
+  `tc_mc_chi_d_read` (well-formed CompData), `tc_mc_chi_d_write_ptl`
+  (WriteNoSnpPtl per-byte merge), `tc_mc_chi_d_decerr` (read+write
+  NONDATA_ERROR), `tc_mc_chi_d_combined_write` (`split_write_rsp=0`
+  CompDBIDResp path), `tc_mc_chi_d_unsupported` (raw CleanSharedPersist
   rejected without touching the device).
 - **D/E matrix** (§10.1 stage 2): the CHI env/base test are parameterized over the
   `(vip_chi, vip_mc)` cfg pair, so the same self-contained slice builds under either
-  issue; `vip_mc_tb_top` carries a second issue=E SN+RN-I interface pair sharing the
+  issue; `mc_tb_top` carries a second issue=E SN+RN-I interface pair sharing the
   CHI-D config_db keys (resolved by vif type, since only one test runs per simv).
-- **CHI-E:** `tc_vip_mc_chi_e_write_read` (D/E parity + the AXI4/CHI-D/CHI-E
+- **CHI-E:** `tc_mc_chi_e_write_read` (D/E parity + the AXI4/CHI-D/CHI-E
   equivalence point: an identical counter line lands byte-identical device state
-  under E), `tc_vip_mc_chi_e_write_zero` (WriteNoSnpZero, E-only: seeds a non-zero
-  line then zeroes it, no data phase), `tc_vip_mc_chi_e_read_sep` (ReadNoSnpSep,
+  under E), `tc_mc_chi_e_write_zero` (WriteNoSnpZero, E-only: seeds a non-zero
+  line then zeroes it, no data phase), `tc_mc_chi_e_read_sep` (ReadNoSnpSep,
   E-only: DataSepResp on ReturnTxnID with correct data).
 - **Protocol equivalence** (§10.1 stage 3): a protocol-neutral golden model
-  (`vip_mc_equiv_model`, sparse byte image) plus one deterministic program
-  (`vip_mc_equiv_program`: full-line writes, byte-enabled partial writes, reads)
-  replayed by `tc_vip_mc_equiv_axi4` / `_chi_d` / `_chi_e`, each checked against a
+  (`mc_equiv_model`, sparse byte image) plus one deterministic program
+  (`mc_equiv_program`: full-line writes, byte-enabled partial writes, reads)
+  replayed by `tc_mc_equiv_axi4` / `_chi_d` / `_chi_e`, each checked against a
   fresh model — a transitive proof that AXI4, CHI-D, and CHI-E land byte-identical
   device state and read data (partial-write ops make AXI4 WSTRB and CHI
   WriteNoSnpPtl merges apples-to-apples).
-- **Mixed-protocol concurrency:** `tc_vip_mc_mixed_concurrent` builds one `vip_mc`
+- **Mixed-protocol concurrency:** `tc_mc_mixed_concurrent` builds one `vip_mc`
   with port 0 = AXI4 and port 1 = CHI-D over a single shared backend + `vip_dram`
-  (`vip_mc_mixed_tb_env`, `MIXED_PORTS_C = '{AXI4, CHI}` with both representative
+  (`mc_mixed_tb_env`, `MIXED_PORTS_C = '{AXI4, CHI}` with both representative
   cfgs on every entry per the `PORTS[0]` convention), driving both legs
   concurrently (`fork`) to disjoint address windows — proving the shared backend
   arbitrates cross-protocol traffic without deadlock or data interference.
@@ -3015,16 +3015,16 @@ connector wired in `vip_mc_tb_top`. Directed coverage:
   host beats gather into one row word and a sub-row beat scatters into part of a
   row. Both front-ends keep the host bus lane (`addr % BUS_BYTES`) distinct from the
   DRAM row lane (`addr % ROW_BYTES`); the CHI driver separates the link DAT-beat
-  count (`chi_dat_beats`) from the DRAM-row count (`beats`). `tc_vip_mc_narrow_axi4`
+  count (`chi_dat_beats`) from the DRAM-row count (`beats`). `tc_mc_narrow_axi4`
   (64 B bus over a 128 B row: 2-beat gather + sub-row lane placement) and
-  `tc_vip_mc_chi_d_narrow` (32 B DAT over a 64 B row: 2-beat gather/scatter) cover
+  `tc_mc_chi_d_narrow` (32 B DAT over a 64 B row: 2-beat gather/scatter) cover
   it.
 - **Broader CHI opcodes** (persist + reject coverage): a memory SN never executes
   atomics / snoop / DVM / stash — those are RN/HN transactions — so the front-end
   rejects the ones that can reach it. Persist is the one exception a memory target
   completes: `CleanSharedPersist` → Comp and `CleanSharedPersistSep` →
   Persist+CompPersist (no device access, `persist_count`), see
-  `tc_vip_mc_chi_d_persist`. `tc_vip_mc_chi_d_reject` covers the atomic families
+  `tc_mc_chi_d_persist`. `tc_mc_chi_d_reject` covers the atomic families
   (Store/Load/Swap/Compare), each rejected with Comp(NONDATA_ERROR); snoop/DVM are
   not receivable by an SN (no SNP channel), so there is no reject path for them.
 
@@ -3035,12 +3035,12 @@ connector wired in `vip_mc_tb_top`. Directed coverage:
   postponement), then drains the debt in a forced catch-up burst — same average
   rate as periodic, bursty arrival. It exposes `get_deferred_debt` /
   `get_peak_deferred_debt` / `get_deferred_catchup_count`, covered by
-  `tc_vip_mc_refresh_deferred`. Deeper refresh/FR-FCFS coordination (opportunistic
+  `tc_mc_refresh_deferred`. Deeper refresh/FR-FCFS coordination (opportunistic
   pull-in on idle) is future work (§11.1).
 - **`init_delay_enabled` / `init_delay_ns`** model a tINIT-like bring-up hold-off:
   the backend gates all device issue (`init_gate_arm()` on posedge rst_n) until
   `init_delay_ns` after reset deassert, while requests still admit/queue. It re-arms
-  on every reset and is covered by `tc_vip_mc_init_delay` (first post-reset write
+  on every reset and is covered by `tc_mc_init_delay` (first post-reset write
   held off, second prompt).
 
 ### 14.3 Out of scope

@@ -1,7 +1,7 @@
 # vip_mc example — UVM testbench guide
 
 This document explains how the `vip_mc` example testbench is built and, in
-detail, how the structural top ([tb/vip_mc_tb_top.sv](tb/vip_mc_tb_top.sv))
+detail, how the structural top ([tb/mc_tb_top.sv](tb/mc_tb_top.sv))
 works. For the per-testcase catalog see [TEST_CASES.md](TEST_CASES.md); for the
 quick-start / regression-runner notes see [README.md](README.md).
 
@@ -19,11 +19,11 @@ only; every UVM component is built by the **test's env**.
 The example has one **default env** plus three **self-contained envs**. Which one
 is built is decided by the test's base class (only one test runs per `simv`, §3).
 
-**Default AXI4 env** — `vip_mc_base_test` → `vip_mc_tb_env`:
+**Default AXI4 env** — `mc_base_test` → `mc_tb_env`:
 
 ```text
-uvm_test_top : vip_mc_base_test  (all tc_vip_mc_axi4_* + cfg/refresh/qos/…)
-  └─ env : vip_mc_tb_env
+uvm_test_top : mc_base_test  (all tc_mc_axi4_* + cfg/refresh/qos/…)
+  └─ env : mc_tb_env
        ├─ clk_agent    : clk_rst_agent                       // owns clk + rst_n
        ├─ dram         : vip_dram #(DRAM_CFG_C)              // the device model
        ├─ u_mc         : vip_mc #(DRAM_CFG_C, 2, PORTS_C)    // the DUT (2 AXI4 ports)
@@ -32,12 +32,12 @@ uvm_test_top : vip_mc_base_test  (all tc_vip_mc_axi4_* + cfg/refresh/qos/…)
        └─ scoreboard   : mc_scoreboard                        // predict()-based timing check
 ```
 
-**Self-contained CHI env** — `vip_mc_chi_base_test #(CHI_CFG_P, MC_CHI_CFG_P)` →
-`vip_mc_chi_tb_env`:
+**Self-contained CHI env** — `mc_chi_base_test #(CHI_CFG_P, MC_CHI_CFG_P)` →
+`mc_chi_tb_env`:
 
 ```text
-uvm_test_top : vip_mc_chi_base_test #(...)   (tc_vip_mc_chi_*, equiv chi legs)
-  └─ _env : vip_mc_chi_tb_env #(...)
+uvm_test_top : mc_chi_base_test #(...)   (tc_mc_chi_*, equiv chi legs)
+  └─ _env : mc_chi_tb_env #(...)
        ├─ clk_agent  : clk_rst_agent
        ├─ dram       : vip_dram #(DRAM_CFG_C)
        ├─ u_mc       : vip_mc #(DRAM_CFG_C, 1, CHI_PORTS_L)  // one CHI SN port
@@ -48,46 +48,46 @@ The base test is parameterized over the `(vip_chi_cfg, vip_mc_chi_cfg)` pair, so
 the **same source** builds the CHI-D slice (default), the CHI-E slice
 (`VIP_CHI_CFG_E_C` / `VIP_MC_CHI_CFG_E_C`), and the narrow-32 B-DAT slice
 (`VIP_CHI_CFG_N32_C`). A CHI-E or narrow test is just a
-`vip_mc_chi_base_test #(...)` leaf specialized to that cfg pair.
+`mc_chi_base_test #(...)` leaf specialized to that cfg pair.
 
-**Self-contained mixed env** — `tc_vip_mc_mixed_concurrent` (extends `uvm_test`)
-→ `vip_mc_mixed_tb_env`: one `vip_mc #(DRAM_CFG_C, 2, MIXED_PORTS_C)` with port 0
+**Self-contained mixed env** — `tc_mc_mixed_concurrent` (extends `uvm_test`)
+→ `mc_mixed_tb_env`: one `vip_mc #(DRAM_CFG_C, 2, MIXED_PORTS_C)` with port 0
 AXI4 (on `man_vif0`) and port 1 CHI-D (on `rni_vif`) over one shared `vip_dram`,
 plus the stock `vip_axi4` MANAGER and `vip_chi` RN-I agents that drive them.
 
-**Self-contained narrow-bus env** — `tc_vip_mc_narrow_axi4` (extends `uvm_test`)
-→ `vip_mc_narrow_axi4_tb_env`: a one-port AXI4 `vip_mc` over a **128 B-row**
+**Self-contained narrow-bus env** — `tc_mc_narrow_axi4` (extends `uvm_test`)
+→ `mc_narrow_axi4_tb_env`: a one-port AXI4 `vip_mc` over a **128 B-row**
 `vip_dram` (`NARROW_DRAM_CFG_C`) while the host bus stays 64 B, exercising the
 `WDATA_BYTES < ROW_BYTES` multi-beat gather/scatter path with no new interfaces.
 
-**Multi-rank env** — `tc_vip_mc_multi_rank` (via `vip_mc_multirank_base_test`)
+**Multi-rank env** — `tc_mc_multi_rank` (via `mc_multirank_base_test`)
 builds its own 2-rank `vip_dram` geometry and a matching one-port AXI4 `vip_mc`.
 
 Ownership and lifecycle:
 
-- **`vip_mc_neutral_base_test`** is the protocol-neutral base every example test extends.
+- **`mc_neutral_base_test`** is the protocol-neutral base every example test extends.
   It owns the shared `report_server`, the `clk_rst_config` (10 ns period), the
   `reset_sequence`, the phase timeout, and the run-phase skeleton (own the initial
   reset, run `body()`, then log `u_mc.sprint_telemetry()`). Both protocol bases
   fill three hooks: build their env, return their clk_rst sequencer for the reset
   drive, and report telemetry.
-- **`vip_mc_base_test`** (extends `vip_mc_neutral_base_test`) adds the AXI4 traffic helpers
+- **`mc_base_test`** (extends `mc_neutral_base_test`) adds the AXI4 traffic helpers
   (`axi4_write_single`, `axi4_read_burst`, `axi4_write_custom_user_on_port`, …);
-  it builds `vip_mc_tb_env` and connects the manager monitor taps.
-- **`vip_mc_chi_base_test #(...)`** (extends `vip_mc_neutral_base_test`) builds the CHI env
+  it builds `mc_tb_env` and connects the manager monitor taps.
+- **`mc_chi_base_test #(...)`** (extends `mc_neutral_base_test`) builds the CHI env
   and owns the RN-I traffic sequences.
-- **`vip_mc_tb_env`** builds the device, the DUT, the stock managers, the clk
+- **`mc_tb_env`** builds the device, the DUT, the stock managers, the clk
   agent, and the scoreboard, and fills one `vip_mc_env_cfg` (QoS classes, aging,
   outstanding limits, buffer depths, addr-map, DECERR range, refresh/init knobs)
   that it `apply()`s into the DUT via `config_db`.
-- **`vip_mc_tb_top`** is structural only (§3).
+- **`mc_tb_top`** is structural only (§3).
 
 ---
 
 ## 2. Config: how the DUT is parameterized
 
 `vip_mc` is pinned by three compile-time facts plus a runtime port map, all
-declared in [tb/vip_mc_tb_pkg.sv](tb/vip_mc_tb_pkg.sv):
+declared in [tb/mc_tb_pkg.sv](tb/mc_tb_pkg.sv):
 
 - `DRAM_CFG_C` — the device geometry the MC fronts (default
   `VIP_DRAM_CFG_DEFAULT_C`: 64 B row, 33-bit address, 1 rank). Sizes the neutral
@@ -106,7 +106,7 @@ sets only what it cares about.
 
 ---
 
-## 3. `vip_mc_tb_top` in detail
+## 3. `mc_tb_top` in detail
 
 The top is interface instances + `*_connect` bridges + the `config_db` handoff.
 There is **no clock/reset generation and no DUT** in the top — the
@@ -135,7 +135,7 @@ two-instance pattern — never one shared role-gated interface):
 | `rni_vif_n32` (`vip_chi_if`, RN-I, 32 B DAT) | `mc_chi_vif_n32` (`vip_mc_chi_if`, 32 B) | `u_chi_connect_n32` | narrow-DAT CHI slice |
 
 A `vip_mc_status_if #(N_PORTS_C)` instance is also hosted for the optional status
-probe (`tc_vip_mc_status_probe`).
+probe (`tc_mc_status_probe`).
 
 `vip_mc_axi4_connect` cross-wires all five AXI4 channels (explicit per-signal
 `assign`s) between the stock MANAGER interface and `vip_mc`'s owned interface.
@@ -178,7 +178,7 @@ summary); a test uses whichever apply:
    `timing_tol_ns` gate and relax the hard check; deep back-to-back multi-issue is
    the one case where a strict prediction can diverge (documented in the file).
 3. **Protocol-equivalence golden model**
-   ([tb/vip_mc_equiv_model.sv](tb/vip_mc_equiv_model.sv)) — the shared program is
+   ([tb/mc_equiv_model.sv](tb/mc_equiv_model.sv)) — the shared program is
    replayed through AXI4 / CHI-D / CHI-E and every read is checked against a fresh
    protocol-neutral image; all three passing proves byte-identical device state
    and read data across the protocols.

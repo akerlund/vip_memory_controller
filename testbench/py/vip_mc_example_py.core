@@ -1,0 +1,42 @@
+CAPI=2:
+name: "akerlund::vip_mc_example_py:0"
+description: "vip_mc pyUVM/cocotb Verilator regression"
+
+# Python-port target. It elaborates the flat Verilator shell in tb/mc_hdl_top.sv
+# and runs cocotb checks from tb/mc_tb_top.py over the controller core, AXI4,
+# CHI-D, CHI-E, mixed, and equivalence paths. The shell must be built with
+# --public-flat-rw so cocotb can drive and observe the bus nets.
+
+filesets:
+  tb:
+    files:
+      - tb/mc_hdl_top.sv
+    file_type: systemVerilogSource
+
+targets:
+  default: &default
+    flow: sim
+    flow_options:
+      tool: verilator
+    filesets:
+      - tb
+    toplevel: mc_hdl_top
+
+  lint:
+    <<: *default
+    flow: lint
+    flow_options:
+      tool: verilator
+      verilator_options:
+        - -Wno-fatal
+        - --public-flat-rw
+
+  sim:
+    <<: *default
+    flow_options:
+      tool: verilator
+      cocotb_module: mc_tb_top
+      mode: cc
+      verilator_options:
+        - -Wno-fatal
+        - --public-flat-rw

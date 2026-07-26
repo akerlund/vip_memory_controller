@@ -13,7 +13,7 @@ The full registered UVM regression passed after this review:
 fusesoc --cores-root=. run --clean --setup --build --target=default --tool=vcs akerlund::vip_mc_example:0
 ```
 
-All 54 discovered `tc_vip_mc_*` tests then passed with `UVM_ERROR : 0` and
+All 54 discovered `tc_mc_*` tests then passed with `UVM_ERROR : 0` and
 `UVM_FATAL : 0`.
 
 ## Open Items

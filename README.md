@@ -41,9 +41,12 @@ surface.
 | --- | --- | --- |
 | `README.md` | User-facing overview | Describes the delivered slice, configuration knobs, constraints, and the basic build/smoke flow for `vip_mc`. |
 | `docs/PRIMER.md` | Educational primer | Explains memory-controller responsibilities, host-to-DRAM translation, scheduling, timing, refresh, and the embedded MC-to-DRAM request examples. |
+| `docs/PORTING_PLAN.md` | pyUVM/cocotb plan | Breaks down the planned Python port of the VIP and example testbench, including dependency reuse and regression gates. |
 | `docs/MC_DRAM_REQUEST_EXAMPLES.md` | Compatibility pointer | Points existing links at the embedded walkthrough in `docs/PRIMER.md`. |
 | `docs/IMPLEMENTATION_PLAN.md` | Design reference | Captures the intended architecture, contracts, tests, and file-level decomposition for the controller VIP. |
 | `docs/FURTHER_WORK.md` | Follow-up list | Tracks current low-priority review follow-ups that are not regressions in the delivered slice. |
+| `py/` | Python port source | Contains the pyUVM/cocotb port of the controller core, backend lifecycle, AXI4 and CHI front-ends, and top-level `vip_mc` component over `vip_dram`. |
+| `testbench/py/` | Python regression testbench | Provides the version guard, pure Python core tests, and a Verilator/cocotb shell covering AXI4, CHI-D, CHI-E, protocol equivalence, and mixed AXI4+CHI traffic with the real Python agents. |
 | `sv/vip_mc.svh` | Single include entry point | Pulls in prerequisite packages, the owned AXI4 interface/types, and the umbrella `vip_mc_pkg` so a consumer can compile the slice from one header. |
 | `sv/vip_mc_pkg.sv` | Umbrella UVM package | Imports shared dependencies and includes the `vip_mc` classes in the compile order needed by the package. |
 | `sv/vip_mc_axi4_types_pkg.sv` | Owned AXI4 type package | Defines `vip_mc`'s AXI4 width/config structs, typedef containers, and constants without depending on stock `vip_axi4_*` config types. |
@@ -90,7 +93,7 @@ configs reached as `cfg.axi4` and `cfg.ports[i]`.
 | `max_outstanding_wr` | `int` | `16` | Write-side acceptance ceiling for each AXI4 frontend. It is mirrored into `cfg.axi4.aw_outstanding_limit`, so this is the knob that determines when `AWREADY` backpressures new write-address traffic. As with the read limit, `0` means unbounded and negative values are illegal. |
 | `qos_class_count` | `int` | `1` | Number of scheduler priority classes in the shared backend. `1` collapses behavior to legacy single-class FCFS. Larger values allow `AxQOS` traffic to fan into multiple priority bands, which is what makes arbitration and aging policy observable under load. |
 | `qos_aging_ns` | `real` | `0.0` | Aging threshold, in nanoseconds, for requests waiting in the backend command queue. Once a request has waited longer than this threshold it is promoted one class per threshold interval, preventing indefinite starvation of low-priority streams. `0.0` disables aging and leaves class order strict. |
-| `fr_fcfs_enable` | `bool_t` | `TRUE` | Enables the backend's readiness-aware within-class tie-break. When `FALSE`, effective QoS classes still use legacy FCFS ordering. When `TRUE`, the backend compares all currently eligible candidates in the winning class with `dram.predict()` and issues the one with the smallest predicted `last_beat_ready_time`, while still preserving same-ID order, refresh priority, aging, and response-credit gating. |
+| `fr_fcfs_enable` | `bool_t` | `FALSE` | Enables the backend's readiness-aware within-class tie-break. When `FALSE`, effective QoS classes still use legacy FCFS ordering. When `TRUE`, the backend compares all currently eligible candidates in the winning class with `dram.predict()` and issues the one with the smallest predicted `last_beat_ready_time`, while still preserving same-ID order, refresh priority, aging, and response-credit gating. |
 | `fr_fcfs_starvation_cap` | `int` | `0` | Within-class fairness bound on FR-FCFS reordering (§11 item 1). Each pick that serves a readiness winner charges one bypass to every older eligible entry; once an entry has been bypassed this many times the backend force-serves the oldest such entry (FCFS override), so a page miss cannot be starved behind a younger page-hit streak. `0` disables the cap (unbounded reorder = pure FR-FCFS). Only meaningful with `fr_fcfs_enable`; orthogonal to `qos_aging_ns` (which promotes across classes). Overrides are counted by `get_fr_fcfs_forced_count()`. |
 | `rd_wr_grouping_enable` | `bool_t` | `FALSE` | Turnaround-aware FR-FCFS (§11 item 1). Makes bus direction (RD/WR) the primary within-class selection key: the backend prefers the eligible candidate whose direction matches the last issued command's, so reads and writes issue in runs that amortize the device read/write turnaround bubble (tWTR/tRTW) instead of paying it on every RD↔WR flip. Readiness (predicted last beat, then `admit_order`) decides within a direction, and the pure readiness winner is the fallback when no same-direction candidate is eligible. This is the classic write-drain trade — a little per-request latency for bus throughput. Only meaningful with `fr_fcfs_enable`. Issued turnarounds are counted by `get_bus_turnaround_count()`, grouping overrides by `get_rd_wr_grouped_count()`. |
 | `rd_wr_grouping_max` | `int` | `0` | Max consecutive same-direction issues before the grouping preference inverts for one pick (a forced turnaround), so the opposite direction cannot be starved by an unbroken same-direction stream. `0` = unbounded run (drain the current direction while candidates exist). A within-direction bound, distinct from `fr_fcfs_starvation_cap`; ignored unless `rd_wr_grouping_enable`. |
@@ -134,8 +137,9 @@ Current constraints:
   into part of a row) rather than mapping 1:1
 - the CHI SN front-end is opt-in behind `+define+VIP_MC_ENABLE_CHI`; the AXI4-only
   core carries no `vip_chi` dependency without it
-- CHI opcode coverage is the SN memory-target subset above;
-  snoop / DVM / stash / atomics / persist remain future work
+- CHI opcode coverage is the SN memory-target subset above; persist CMOs are
+  acknowledged locally, atomics are locally rejected with `Comp(NONDATA_ERROR)`,
+  and snoop / DVM / stash traffic remains outside the SN memory-target subset
 
 Why `VIP_MC_ENABLE_CHI` exists:
 
@@ -157,6 +161,6 @@ builds the AXI4 suite and, through `vip_mc_example.core`, the CHI slice too):
 
 ```sh
 fusesoc --cores-root=. run --clean --setup --build --target=default --tool=vcs akerlund::vip_mc_example:0
-./build/akerlund__vip_mc_example_0/default-vcs/akerlund__vip_mc_example_0 +UVM_TESTNAME=tc_vip_mc_axi4_single_beat
-./build/akerlund__vip_mc_example_0/default-vcs/akerlund__vip_mc_example_0 +UVM_TESTNAME=tc_vip_mc_chi_e_write_read
+./build/akerlund__vip_mc_example_0/default-vcs/akerlund__vip_mc_example_0 +UVM_TESTNAME=tc_mc_axi4_single_beat
+./build/akerlund__vip_mc_example_0/default-vcs/akerlund__vip_mc_example_0 +UVM_TESTNAME=tc_mc_chi_e_write_read
 ```
