@@ -2,10 +2,17 @@
 
 Review date: 2026-07-20
 
-Scope: current standalone `vip_memory_controller` VIP and copied UVM testbench.
-The previous review archive was removed because its actionable defects are
+Scope: current standalone `vip_memory_controller` VIP and its testbenches. The
+previous review archive was removed because its actionable defects are
 addressed in the current code, and several entries belonged to sibling VIP
 repositories now consumed as submodules.
+
+**Both flows.** The VIP ships a SystemVerilog implementation under `sv/` and a
+pyUVM/cocotb port under `py/`, exercised by `testbench/sv` and `testbench/py`
+against the shared catalog in [../testbench/TEST_CASES.md](../testbench/TEST_CASES.md).
+Every item below is open in both. When one is implemented, the fix and its
+regression coverage land in the SV and Python sides together — otherwise the
+flows drift and the catalog stops describing one of them.
 
 The full registered UVM regression passed after this review:
 
@@ -15,6 +22,13 @@ fusesoc --cores-root=. run --clean --setup --build --target=default --tool=vcs a
 
 All 54 discovered `tc_mc_*` tests then passed with `UVM_ERROR : 0` and
 `UVM_FATAL : 0`.
+
+The Python flow runs the same 54 plus the flow-only `tc_mc_core_slice`, 55 in
+total, over Verilator:
+
+```sh
+./testbench/py/run_fusesoc.sh --target sim
+```
 
 ## Open Items
 
