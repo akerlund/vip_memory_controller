@@ -5,6 +5,14 @@ types/interfaces and UVM front-end logic — an AXI4 controller-side front-end a
 an optional CHI SN (memory-target) front-end — over one shared,
 protocol-agnostic backend.
 
+The VIP ships in **two implementations**: the SystemVerilog UVM source under
+[`sv/`](sv/) and the pyUVM/cocotb port under [`py/`](py/), which runs on
+Verilator. They are feature-equivalent and share one testcase catalog — the
+same 54 testcases run in both flows. This README is the **common reference**:
+the architecture, configuration, and feature set below apply to both, and the
+code snippets are shown in SystemVerilog for concreteness with the Python API
+mirroring them.
+
 Current delivered slice:
 
 - homogeneous host ports (AXI4 and/or CHI, one protocol per port) over one
@@ -30,12 +38,39 @@ Current delivered slice:
   coverage), mirrored by the pyUVM/cocotb port in `testbench/py`; see
   [testbench/TEST_CASES.md](testbench/TEST_CASES.md)
 
+## Documentation map
+
+This README covers the controller's architecture, configuration knobs, and
+delivered feature set. The flow-specific guides and the deeper references live
+in separate documents:
+
+- [py/README.md](py/README.md) — the **pyUVM / cocotb port** (Python, runs on
+  Verilator via FuseSoC). The feature reference here applies to the port; the
+  Python API mirrors the SV one.
+- [testbench/TEST_CASES.md](testbench/TEST_CASES.md) — the **shared testcase
+  catalog**: every testcase, its harness env, what it proves, and measured
+  runtimes for both flows. Authoritative for what the regression covers.
+- [testbench/sv/README.md](testbench/sv/README.md) — the **SystemVerilog**
+  example testbench: quick-start, regression running, and source-file map.
+- [testbench/sv/UVM_TB.md](testbench/sv/UVM_TB.md) — elaborated walkthrough of
+  the SV structural top and the component hierarchy.
+- [testbench/py/README.md](testbench/py/README.md) — the **Python** example
+  testbench: how to run it and how the status probe surfaces in waves.
+- [docs/PRIMER.md](docs/PRIMER.md) — educational background on
+  memory-controller responsibilities, host-to-DRAM translation, scheduling,
+  timing, and refresh, with the embedded MC-to-DRAM request walkthrough.
+- [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) — the design
+  reference: intended architecture, contracts, and file-level decomposition.
+- [docs/FURTHER_WORK.md](docs/FURTHER_WORK.md) — open follow-ups. Each applies
+  to both flows.
+
 ## File map
 
 The checked-in `vip_mc` files fall into two useful buckets: files an
 integrator is likely to read, include, configure, or instantiate directly, and
 files that mainly implement the internal controller behavior behind that
-surface.
+surface. The `sv/` entries below have Python counterparts of the same name
+under `py/`.
 
 ### Integration-facing files
 
@@ -163,4 +198,13 @@ builds the AXI4 suite and, through `vip_mc_example.core`, the CHI slice too):
 fusesoc --cores-root=. run --clean --setup --build --target=default --tool=vcs akerlund::vip_mc_example:0
 ./build/akerlund__vip_mc_example_0/default-vcs/akerlund__vip_mc_example_0 +UVM_TESTNAME=tc_mc_axi4_single_beat
 ./build/akerlund__vip_mc_example_0/default-vcs/akerlund__vip_mc_example_0 +UVM_TESTNAME=tc_mc_chi_e_write_read
+```
+
+The same testcases run in the Python flow over Verilator. `VIP_MC_ENABLE_CHI`
+has no equivalent there — the port has no compile-time CHI switch, so the CHI
+testcases are always built:
+
+```sh
+python3 testbench/py/check_versions.py
+./testbench/py/run_fusesoc.sh --target sim
 ```
