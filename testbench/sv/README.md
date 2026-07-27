@@ -103,7 +103,7 @@ IP in this example.
 ## Regression inventory
 
 The full, categorized test catalog — every testcase, its harness env, and what
-it proves — lives in [TEST_CASES.md](TEST_CASES.md). It is the authoritative
+it proves — lives in [../TEST_CASES.md](../TEST_CASES.md). It is the authoritative
 list; this README does not duplicate it. For the component hierarchy and an
 elaborated walkthrough of `tb_top`, see [UVM_TB.md](UVM_TB.md).
 
@@ -142,7 +142,6 @@ report lines as the success signal.
 testbench/sv/
 ├── README.md
 ├── UVM_TB.md
-├── TEST_CASES.md
 ├── tb/
 │   ├── tb.svh
 │   ├── mc_tb_pkg.sv

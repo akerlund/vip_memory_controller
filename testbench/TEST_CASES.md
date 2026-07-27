@@ -1,12 +1,29 @@
 # vip_mc example — test-case catalog
 
-The shared regression runs **53** UVM testcases. Each builds its env (only one
-test runs per `simv`, see [UVM_TB.md](UVM_TB.md) §1/§3), drives a full
-`manager → vip_mc → vip_dram` scenario, and checks read-back data, telemetry
-counters, and/or the timing scoreboard. Run one with
-`./build/akerlund__vip_mc_example_0/default-vcs/akerlund__vip_mc_example_0 +UVM_TESTNAME=<name>`;
-build from the repository root with
-`fusesoc --cores-root=. run --clean --setup --build --target=default --tool=vcs akerlund::vip_mc_example:0`.
+The shared regression runs **54** testcases across both flows: the SystemVerilog
+UVM example in [sv/](sv/) and the pyUVM/cocotb port in [py/](py/). Each builds
+its env (only one test runs per `simv`, see [sv/UVM_TB.md](sv/UVM_TB.md) §1/§3),
+drives a full `manager → vip_mc → vip_dram` scenario, and checks read-back data,
+telemetry counters, and/or the timing scoreboard. This catalog is the
+authoritative list; the per-flow READMEs do not duplicate it.
+
+The Python flow adds one flow-only testcase, `tc_mc_core_slice` — a pure
+controller-core unit slice with no HDL activity — for 55 total.
+
+Build and run the SV flow from the repository root with:
+
+```sh
+fusesoc --cores-root=. run --clean --setup --build --target=default --tool=vcs \
+  akerlund::vip_mc_example:0
+./build/akerlund__vip_mc_example_0/default-vcs/akerlund__vip_mc_example_0 \
+  +UVM_TESTNAME=<name>
+```
+
+Run the Python flow with:
+
+```sh
+./testbench/py/run_fusesoc.sh --target sim
+```
 
 Legend for the **Env** column:
 
@@ -16,6 +33,74 @@ Legend for the **Env** column:
 - `MIXED` — self-contained AXI4 + CHI-D env over one shared device.
 - `NARROW` — self-contained one-port AXI4 env over a 128 B-row device.
 - `MULTIRANK` — self-contained one-port AXI4 env over a 2-rank device.
+
+## Runtime
+
+Measured from fresh logs in `testbench/sv/rundir/vcs` and
+`testbench/py/rundir/verilator/default`. The SV flow uses the
+`clk_rst_agent` 10 ns clock, and the Python flow starts cocotb with the
+same 10 ns clock period. Clock columns are simulator time / 10 ns;
+half-clock values are possible because test completion can occur between
+active clock edges. Every testcase below runs in both flows. The Python-only
+`tc_mc_core_slice` measured 0.0 ns — it drives no clock — and is not part of
+the SV UVM catalog.
+
+| Test | Env | SV time | SV clocks | PY time | PY clocks |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `tc_mc_axi4_single_beat` | AXI4 | 325.0 ns | 32.5 | 210.0 ns | 21.0 |
+| `tc_mc_axi4_burst` | AXI4 | 345.0 ns | 34.5 | 420.0 ns | 42.0 |
+| `tc_mc_axi4_wrap` | AXI4 | 345.0 ns | 34.5 | 280.0 ns | 28.0 |
+| `tc_mc_axi4_fixed` | AXI4 | 295.0 ns | 29.5 | 270.0 ns | 27.0 |
+| `tc_mc_axi4_narrow_unaligned` | AXI4 | 295.0 ns | 29.5 | 210.0 ns | 21.0 |
+| `tc_mc_axi4_exclusive` | AXI4 | 635.0 ns | 63.5 | 530.0 ns | 53.0 |
+| `tc_mc_axi4_read_multi_id` | AXI4 | 390.0 ns | 39.0 | 320.0 ns | 32.0 |
+| `tc_mc_axi4_user_passthrough` | AXI4 | 275.0 ns | 27.5 | 210.0 ns | 21.0 |
+| `tc_mc_axi4_outstanding_limit` | AXI4 | 360.0 ns | 36.0 | 320.0 ns | 32.0 |
+| `tc_mc_axi4_aw_backpressure` | AXI4 | 270.0 ns | 27.0 | 260.0 ns | 26.0 |
+| `tc_mc_axi4_rsp_backpressure` | AXI4 | 360.0 ns | 36.0 | 320.0 ns | 32.0 |
+| `tc_mc_axi4_bresp_backpressure` | AXI4 | 270.0 ns | 27.0 | 330.0 ns | 33.0 |
+| `tc_mc_axi4_wready_backpressure` | AXI4 | 305.0 ns | 30.5 | 240.0 ns | 24.0 |
+| `tc_mc_qos_scheduling` | AXI4 | 500.0 ns | 50.0 | 460.0 ns | 46.0 |
+| `tc_mc_qos_aging` | AXI4 | 530.0 ns | 53.0 | 490.0 ns | 49.0 |
+| `tc_mc_axi4_ooo_inter_id` | AXI4 | 590.0 ns | 59.0 | 520.0 ns | 52.0 |
+| `tc_mc_axi4_fr_fcfs_mixed_rd_wr` | AXI4 | 820.0 ns | 82.0 | 750.0 ns | 75.0 |
+| `tc_mc_fr_fcfs_starvation_cap` | AXI4 | 870.0 ns | 87.0 | 800.0 ns | 80.0 |
+| `tc_mc_rd_wr_grouping` | AXI4 | 1530.0 ns | 153.0 | 1460.0 ns | 146.0 |
+| `tc_mc_axi4_page_hit_streak` | AXI4 | 2445.0 ns | 244.5 | 2380.0 ns | 238.0 |
+| `tc_mc_axi4_write_coalesce` | AXI4 | 1950.0 ns | 195.0 | 1890.0 ns | 189.0 |
+| `tc_mc_axi4_read_pipeline` | AXI4 | 320.0 ns | 32.0 | 280.0 ns | 28.0 |
+| `tc_mc_cfg` | AXI4 | 120.0 ns | 12.0 | 90.0 ns | 9.0 |
+| `tc_mc_axi4_agent` | AXI4 | 260.0 ns | 26.0 | 220.0 ns | 22.0 |
+| `tc_mc_axi4_multi_port` | AXI4 | 415.0 ns | 41.5 | 320.0 ns | 32.0 |
+| `tc_mc_axi4_unsupported_reject` | AXI4 | 530.0 ns | 53.0 | 430.0 ns | 43.0 |
+| `tc_mc_ecc_slverr` | AXI4 | 615.0 ns | 61.5 | 500.0 ns | 50.0 |
+| `tc_mc_refresh` | AXI4 | 265.0 ns | 26.5 | 220.0 ns | 22.0 |
+| `tc_mc_refresh_deferred` | AXI4 | 1335.0 ns | 133.5 | 1290.0 ns | 129.0 |
+| `tc_mc_refresh_collision` | AXI4 | 660.0 ns | 66.0 | 960.0 ns | 96.0 |
+| `tc_mc_reset_recovery` | AXI4 | 310.0 ns | 31.0 | 230.0 ns | 23.0 |
+| `tc_mc_init_delay` | AXI4 | 525.0 ns | 52.5 | 450.0 ns | 45.0 |
+| `tc_mc_multi_rank` | MULTIRANK | 3645.0 ns | 364.5 | 3570.0 ns | 357.0 |
+| `tc_mc_preset_sweep` | AXI4 | 945.0 ns | 94.5 | 790.0 ns | 79.0 |
+| `tc_mc_telemetry_counters` | AXI4 | 370.0 ns | 37.0 | 330.0 ns | 33.0 |
+| `tc_mc_status_probe` | AXI4 | 8315.0 ns | 831.5 | 2050.0 ns | 205.0 |
+| `tc_mc_observability` | AXI4 | 525.0 ns | 52.5 | 440.0 ns | 44.0 |
+| `tc_mc_chi_d_write_read` | CHI-D | 470.0 ns | 47.0 | 410.0 ns | 41.0 |
+| `tc_mc_chi_d_read` | CHI-D | 380.0 ns | 38.0 | 320.0 ns | 32.0 |
+| `tc_mc_chi_d_write_ptl` | CHI-D | 550.0 ns | 55.0 | 500.0 ns | 50.0 |
+| `tc_mc_chi_d_decerr` | CHI-D | 420.0 ns | 42.0 | 360.0 ns | 36.0 |
+| `tc_mc_chi_d_combined_write` | CHI-D | 430.0 ns | 43.0 | 370.0 ns | 37.0 |
+| `tc_mc_chi_d_unsupported` | CHI-D | 530.0 ns | 53.0 | 470.0 ns | 47.0 |
+| `tc_mc_chi_d_persist` | CHI-D | 740.0 ns | 74.0 | 690.0 ns | 69.0 |
+| `tc_mc_chi_d_reject` | CHI-D | 1160.0 ns | 116.0 | 1130.0 ns | 113.0 |
+| `tc_mc_chi_e_write_read` | CHI-E | 470.0 ns | 47.0 | 410.0 ns | 41.0 |
+| `tc_mc_chi_e_write_zero` | CHI-E | 580.0 ns | 58.0 | 530.0 ns | 53.0 |
+| `tc_mc_chi_e_read_sep` | CHI-E | 480.0 ns | 48.0 | 420.0 ns | 42.0 |
+| `tc_mc_narrow_axi4` | NARROW | 470.0 ns | 47.0 | 420.0 ns | 42.0 |
+| `tc_mc_chi_d_narrow` | CHI-N32 | 500.0 ns | 50.0 | 440.0 ns | 44.0 |
+| `tc_mc_mixed_concurrent` | MIXED | 1490.0 ns | 149.0 | 1470.0 ns | 147.0 |
+| `tc_mc_equiv_axi4` | AXI4 | 755.0 ns | 75.5 | 660.0 ns | 66.0 |
+| `tc_mc_equiv_chi_d` | CHI-D | 1050.0 ns | 105.0 | 1040.0 ns | 104.0 |
+| `tc_mc_equiv_chi_e` | CHI-E | 1050.0 ns | 105.0 | 1040.0 ns | 104.0 |
 
 ---
 
@@ -130,7 +215,7 @@ Legend for the **Env** column:
 - The `tc_mc_equiv_chi_d` / `_chi_e` leaves are parameterized
   specializations of one `mc_equiv_chi_base_test #(...)` body; likewise the CHI-E
   and narrow-DAT tests are `mc_chi_base_test #(...)` leaves over one
-  parameterized CHI env/base. See [UVM_TB.md](UVM_TB.md) §1.
+  parameterized CHI env/base. See [sv/UVM_TB.md](sv/UVM_TB.md) §1.
 - Coverage still owed (tracked in `vip_mc/IMPLEMENTATION_PLAN.md` §11):
   multi-channel striping, sub/pseudo-channel dispatch, a DFI face, and a dynamic
   timing-retune wrapper. (Write coalescing, the first residual-observability

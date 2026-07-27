@@ -2,7 +2,7 @@
 
 This document explains how the `vip_mc` example testbench is built and, in
 detail, how the structural top ([tb/mc_tb_top.sv](tb/mc_tb_top.sv))
-works. For the per-testcase catalog see [TEST_CASES.md](TEST_CASES.md); for the
+works. For the per-testcase catalog see [../TEST_CASES.md](../TEST_CASES.md); for the
 quick-start / regression-runner notes see [README.md](README.md).
 
 Unlike the DUT-less `vip_chi` example, this example has a **real DUT in the
