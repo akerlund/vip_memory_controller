@@ -25,7 +25,7 @@ covered by the regression:
 - top-level `vip_mc` component that builds one or more AXI4 or CHI front-ends
   over one shared backend and `vip_dram`
 
-The Verilator regression runs 55 testcases — the 54 in
+The Verilator regression runs 57 testcases — the 56 in
 [`testbench/TEST_CASES.md`](../testbench/TEST_CASES.md) plus the Python-only
 `tc_mc_core_slice` unit slice. Run it with:
 

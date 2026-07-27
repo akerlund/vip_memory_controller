@@ -1,6 +1,6 @@
 # vip_mc example — test-case catalog
 
-The shared regression runs **54** testcases across both flows: the SystemVerilog
+The shared regression runs **56** testcases across both flows: the SystemVerilog
 UVM example in [sv/](sv/) and the pyUVM/cocotb port in [py/](py/). Each builds
 its env (only one test runs per `simv`, see [sv/UVM_TB.md](sv/UVM_TB.md) §1/§3),
 drives a full `manager → vip_mc → vip_dram` scenario, and checks read-back data,
@@ -8,7 +8,7 @@ telemetry counters, and/or the timing scoreboard. This catalog is the
 authoritative list; the per-flow READMEs do not duplicate it.
 
 The Python flow adds one flow-only testcase, `tc_mc_core_slice` — a pure
-controller-core unit slice with no HDL activity — for 55 total.
+controller-core unit slice with no HDL activity — for 57 total.
 
 Build and run the SV flow from the repository root with:
 
@@ -44,6 +44,12 @@ half-clock values are possible because test completion can occur between
 active clock edges. Every testcase below runs in both flows. The Python-only
 `tc_mc_core_slice` measured 0.0 ns — it drives no clock — and is not part of
 the SV UVM catalog.
+
+The last two rows are deliberately long. `tc_mc_axi4_soak` replays a randomized
+program rather than one directed scenario, and `tc_mc_refresh_realistic` has to
+span several native `tREFI` windows for a refresh to fire at all. Together they
+are roughly half the regression's simulated time; the rest of the suite still
+runs in tens to hundreds of clocks per test.
 
 | Test | Env | SV time | SV clocks | PY time | PY clocks |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -101,6 +107,8 @@ the SV UVM catalog.
 | `tc_mc_equiv_axi4` | AXI4 | 755.0 ns | 75.5 | 660.0 ns | 66.0 |
 | `tc_mc_equiv_chi_d` | CHI-D | 1050.0 ns | 105.0 | 1040.0 ns | 104.0 |
 | `tc_mc_equiv_chi_e` | CHI-E | 1050.0 ns | 105.0 | 1040.0 ns | 104.0 |
+| `tc_mc_axi4_soak` | AXI4 | 12045.0 ns | 1204.5 | 11330.0 ns | 1133.0 |
+| `tc_mc_refresh_realistic` | AXI4 | 39145.0 ns | 3914.5 | 39450.0 ns | 3945.0 |
 
 ---
 
@@ -110,7 +118,7 @@ the SV UVM catalog.
 | --- | --- | --- |
 | `tc_mc_axi4_single_beat` | AXI4 | write-then-read reaches `vip_dram`; DECERR short-circuits at the FE. |
 | `tc_mc_axi4_burst` | AXI4 | one aligned full-width INCR write burst + matching read burst replay beat-for-beat; FE/backend counters agree. |
-| `tc_mc_axi4_wrap` | AXI4 | WRAP burst preserves wrapped beat order on the bus while the backend stores rows in wrap-region address order. |
+| `tc_mc_axi4_wrap` | AXI4 | WRAP burst preserves wrapped beat order on the bus while the backend stores rows in wrap-region address order, **and** the device access is issued at the wrap-region base rather than the AXI start address. The burst starts mid-region so the two differ; the address check is explicit because a WRAP read-back rotates the same way a misplaced write does and cannot catch it (see Notes). |
 | `tc_mc_axi4_fixed` | AXI4 | a narrow unaligned FIXED burst packs to one DRAM row access; repeated FIXED reads replay the final stored bytes. |
 | `tc_mc_axi4_narrow_unaligned` | AXI4 | a 2-beat 4 B INCR burst at an unaligned base packs into one row access and unpacks correctly on read-back. |
 | `tc_mc_axi4_exclusive` | AXI4 | exclusive read→write returns EXOKAY + updates memory; an intervening normal write makes the exclusive write return OKAY and not modify memory. |
@@ -139,6 +147,7 @@ the SV UVM catalog.
 | `tc_mc_rd_wr_grouping` | AXI4 | §11 item 1 turnaround-aware grouping: with `rd_wr_grouping_enable` and a read as the last issued command, expensive read page-misses and cheap write page-hits sit co-pending behind a held device window; grouping drains all reads before either write (pure readiness would grant the cheaper writes first), `get_rd_wr_grouped_count()` advances, and `get_bus_turnaround_count()` is exactly 1. |
 | `tc_mc_axi4_page_hit_streak` | AXI4 | a long same-row burst is governed device-side by `tCCD_L` per column access while AXI completion still matches the scoreboard. |
 | `tc_mc_axi4_write_coalesce` | AXI4 | with `write_coalescing_enable` + a pipelined manager (`man_wr_outstanding_max>1`), two same-line writes co-pending behind a held device window merge into one device access; both still get an OKAY BRESP (fan-out), the byte-lane overlay is correct, and `coalesced_write_count==1`. |
+| `tc_mc_axi4_soak` | AXI4 | the suite's one constrained-random test: ~96 randomized transactions (INCR/WRAP/FIXED, narrow and full-width, 1..16 beats, 4 ids, full QoS range, 0..8-clock gaps) replayed concurrently on both ports, every read byte checked against a golden model and the whole written image swept through the device backdoor at the end. Stimulus comes from `mc_soak_gen`, a shared explicit LCG that emits byte-identical programs in both flows, so a failure reproduces in both. `+MC_SOAK_SEED` / `+MC_SOAK_TXNS` / `+MC_SOAK_WRAP_PCT` (env vars of the same name in the Python flow). |
 | `tc_mc_axi4_read_pipeline` | AXI4 | with a pipelined manager (`man_rd_outstanding_max>1`), N reads-with-response are issued via `vip_axi4_pipelined_seq`; all return their own correct data and the FE's peak in-flight read count exceeds 1 (a serial manager never would). |
 
 ## AXI4 config, agent & reject
@@ -156,6 +165,7 @@ the SV UVM catalog.
 | Test | Env | Proves |
 | --- | --- | --- |
 | `tc_mc_refresh` | AXI4 | controller-emitted refreshes (shortened `tREFI`) match the device-observed refresh count. |
+| `tc_mc_refresh_realistic` | AXI4 | the only test where a refresh fires because time passed: no `tREFI` override, continuous checked traffic across 5 native 7800 ns intervals (~39 us). Emitted refresh count matches elapsed time / `tREFI` within one interval, the device executed every one, and no access across a refresh loses or corrupts data. `+MC_REFRESH_INTERVALS` (env var of the same name in the Python flow) lengthens it. |
 | `tc_mc_refresh_deferred` | AXI4 | `DEFERRED` policy postpones refreshes (debt ≤ `refresh_max_deferred = 4`) then drains a catch-up burst; ≥1 catch-up, debt never exceeds the limit, MC count == device count. |
 | `tc_mc_refresh_collision` | AXI4 | a REF forced between two reads (short `tREFI` + 1-deep window) makes the second read issue only after REF and pick up `tRFC`. |
 | `tc_mc_reset_recovery` | AXI4 | a mid-flight read cancelled by `rst_n` never appears on R; the post-reset read to the same address completes and is classified page-empty again. |
@@ -216,6 +226,41 @@ the SV UVM catalog.
   specializations of one `mc_equiv_chi_base_test #(...)` body; likewise the CHI-E
   and narrow-DAT tests are `mc_chi_base_test #(...)` leaves over one
   parameterized CHI env/base. See [sv/UVM_TB.md](sv/UVM_TB.md) §1.
+- **Functional coverage** is collected by every AXI4/CHI/mixed test and reported
+  at `report_phase` under a `[COV]` prefix. Three collectors, all opt-out with
+  `mc_coverage_enabled = 0`:
+  - `vip_axi4_coverage` per manager port — AXI4 protocol coverage (size, burst,
+    len, resp, alignment, 4 KB crossing, narrow, WSTRB, backpressure,
+    outstanding, out-of-order). Ships with the agent; the `vip_mc` envs simply
+    never instantiated it before.
+  - `vip_chi_coverage` on the CHI and mixed envs — CHI REQ/RSP/DAT opcodes,
+    write flow, QoS, alignment.
+  - `mc_coverage` (`tb/mc_coverage.sv`, `tb/mc_coverage.py`) — the
+    controller-specific layer the agents cannot see: scheduling decisions off
+    the backend grant tap (op, burst, QoS class, starvation bypass, coalesce
+    fan-out, rank/bank-group/bank), device outcome joined back by tag (page
+    hit/miss/empty, ECC severity), bus turnaround between consecutive grants
+    including the refresh-adjacent transitions, and host completion responses
+    per port.
+  SV and Python percentages are **not** comparable — pyvsc and SV covergroups
+  weight bins differently. Treat them as two independent scores over the same
+  intent. The Python numbers also accumulate across the whole regression (one
+  process), while each SV test is its own `simv` and reports only its own.
+- **Fixed: WRAP device placement.** Found by `tc_mc_axi4_soak` on its first run.
+  The device request went out at the AXI start address (`vip_mc_backend`
+  `req.addr = entry.addr`) while `pack_write_beat` / `unpack_read_beat` index the
+  payload rows from the wrap-region base. A WRAP burst not starting at its region
+  base was therefore written rotated by the start offset, with its last row one
+  row past the region — corrupting a neighbour it never touched. A WRAP read of
+  the same shape rotated identically, so read-after-write hid it, and the
+  directed `tc_mc_axi4_wrap` passed throughout; only a non-WRAP observer (the
+  soak's backdoor sweep) could see it.
+  The device address is now taken from `vip_mc_cmd_entry::get_dev_addr()` — the
+  burst window base, which is where the payload rows are indexed from — with the
+  window arithmetic defined once in `vip_mc_axi4_types_pkg`. Guarded two ways:
+  `tc_mc_axi4_wrap` asserts the issued device address directly (seed-independent),
+  and the soak carries WRAP at 15% of its default mix. Regression case: seed 1,
+  port 1 txn 12 (WRAP, 4 x 64 B, start `0xbbdc40`, region base `0xbbdc00`).
 - Coverage still owed (tracked in `vip_mc/IMPLEMENTATION_PLAN.md` §11):
   multi-channel striping, sub/pseudo-channel dispatch, a DFI face, and a dynamic
   timing-retune wrapper. (Write coalescing, the first residual-observability
