@@ -1042,7 +1042,7 @@ class vip_mc_backend #(
     end
 
     req = req_t::type_id::create("fr_fcfs_predict_req");
-    req.addr              = entry.addr;
+    req.addr              = entry.get_dev_addr();
     req.op                = entry.op;
     req.beats             = entry.beats;
     req.has_explicit_rank = entry.has_explicit_rank;
@@ -1166,7 +1166,8 @@ class vip_mc_backend #(
     end
 
     req = req_t::type_id::create($sformatf("req_%0d", this.issued_req_count));
-    req.addr              = entry.addr;
+    // Burst window base, not the protocol start address - see get_dev_addr().
+    req.addr              = entry.get_dev_addr();
     req.op                = entry.op;
     req.beats             = entry.beats;
     req.has_explicit_rank = entry.has_explicit_rank;

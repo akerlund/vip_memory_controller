@@ -31,6 +31,7 @@ from vip_dram_types_pkg import VipDramOp
 
 from vip_mc_axi4_types_pkg import (
   VIP_MC_AXI4_BURST_INCR_C, VIP_MC_AXI4_RESP_OKAY_C,
+  vip_mc_axi4_burst_window_first_addr,
 )
 
 
@@ -68,6 +69,24 @@ class vip_mc_cmd_entry:
     self.last_beat_ready_time = 0.0
     self.completed = False
     self.merged_writes = []
+
+  def get_dev_addr(self) -> int:
+    """Device-facing base address of this access: the lowest byte address of its
+    burst window.
+
+    This is NOT always addr. addr is the protocol start address (AWADDR/ARADDR),
+    which is what the front-end needs for lane placement, exclusive-monitor
+    keying and region checks. The payload arrays (wdata/wstrb/rdata) are
+    row-indexed from the burst window base instead, and beats counts the rows
+    from that base - so the device access must start there too. The two differ
+    only for a WRAP burst that does not begin at its wrap-region base; issuing
+    such an access at addr would place every row rotated by the start offset and
+    push the last row one row past the region, corrupting a neighbour.
+
+    Non-AXI4 front-ends leave axi_burst at its INCR default, so this returns addr
+    for them and for backend-generated refresh entries."""
+    return vip_mc_axi4_burst_window_first_addr(
+        self.addr, self.axi_size_bytes, self.axi_beats, self.axi_burst)
 
   def clone(self, name=None):
     c = vip_mc_cmd_entry(name or self.name)

@@ -87,4 +87,30 @@ class vip_mc_cmd_entry #(
     super.new(name);
   endfunction
 
+  // ---------------------------------------------------------------------------
+  // Return the device-facing base address of this access: the lowest byte
+  // address of its burst window.
+  //
+  // This is NOT always addr. addr is the protocol start address (AWADDR/ARADDR),
+  // which is what the front-end needs for lane placement, exclusive-monitor
+  // keying and region checks. The payload arrays below (wdata/wstrb/rdata) are
+  // row-indexed from the burst window base instead, and beats counts the rows
+  // from that base - so the device access must start there too. The two differ
+  // only for a WRAP burst that does not begin at its wrap-region base; issuing
+  // such an access at addr would place every row rotated by the start offset and
+  // push the last row one row past the region, corrupting a neighbour.
+  //
+  // Non-AXI4 front-ends leave axi_burst at its INCR default, so this returns addr
+  // for them and for backend-generated refresh entries.
+  // ---------------------------------------------------------------------------
+  function longint unsigned get_dev_addr();
+
+    return vip_mc_axi4_types_pkg::vip_mc_axi4_burst_window_first_addr(
+      .addr       ( this.addr           ),
+      .size_bytes ( this.axi_size_bytes ),
+      .beats      ( this.axi_beats      ),
+      .axburst    ( this.axi_burst      )
+    );
+  endfunction
+
 endclass

@@ -82,3 +82,27 @@ class VipMcAxi4CfgT:
 
 def vip_mc_axi4_size_bytes(axsize: int) -> int:
   return 1 << int(axsize)
+
+
+def vip_mc_axi4_wrap_region_base_addr(addr: int, size_bytes: int,
+                                      beats: int) -> int:
+  """Aligned base address of the AXI4 WRAP region containing addr."""
+  if beats == 0 or size_bytes == 0:
+    return int(addr)
+  region_bytes = int(size_bytes) * int(beats)
+  return (int(addr) // region_bytes) * region_bytes
+
+
+def vip_mc_axi4_burst_window_first_addr(addr: int, size_bytes: int, beats: int,
+                                        axburst: int) -> int:
+  """Lowest byte address covered by an AXI4 burst window.
+
+  For INCR and FIXED this is just the start address. For WRAP it is the wrap-
+  region base, which can be BELOW the start address - a WRAP burst beginning
+  mid-region wraps back to the base on its last beats. That distinction is the
+  reason this lives here rather than being open-coded: the burst window, not the
+  start address, is what the front-end indexes its row-granular payload from and
+  therefore what the device access must start at."""
+  if axburst == VIP_MC_AXI4_BURST_WRAP_C:
+    return vip_mc_axi4_wrap_region_base_addr(addr, size_bytes, beats)
+  return int(addr)

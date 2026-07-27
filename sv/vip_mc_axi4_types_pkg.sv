@@ -119,6 +119,48 @@ package vip_mc_axi4_types_pkg;
     return (1 << axsize);
   endfunction
 
+  // ---------------------------------------------------------------------------
+  // Return the aligned base address of the AXI4 WRAP region containing addr.
+  // ---------------------------------------------------------------------------
+  function automatic longint unsigned vip_mc_axi4_wrap_region_base_addr(
+    input longint unsigned addr,
+    input int unsigned     size_bytes,
+    input int unsigned     beats
+  );
+    longint unsigned region_bytes;
+
+    if ((beats == 0) || (size_bytes == 0)) begin
+      return addr;
+    end
+
+    region_bytes = size_bytes;
+    region_bytes = region_bytes * beats;
+    return (addr / region_bytes) * region_bytes;
+  endfunction
+
+  // ---------------------------------------------------------------------------
+  // Return the lowest byte address covered by an AXI4 burst window.
+  //
+  // For INCR and FIXED this is just the start address. For WRAP it is the wrap-
+  // region base, which can be BELOW the start address - a WRAP burst beginning
+  // mid-region wraps back to the base on its last beats. That distinction is the
+  // reason this lives here rather than being open-coded: the burst window, not
+  // the start address, is what the front-end indexes its row-granular payload
+  // from and therefore what the device access must start at.
+  // ---------------------------------------------------------------------------
+  function automatic longint unsigned vip_mc_axi4_burst_window_first_addr(
+    input longint unsigned addr,
+    input int unsigned     size_bytes,
+    input int unsigned     beats,
+    input logic [1 : 0]    axburst
+  );
+    if (axburst == VIP_MC_AXI4_BURST_WRAP_C) begin
+      return vip_mc_axi4_wrap_region_base_addr(addr, size_bytes, beats);
+    end
+
+    return addr;
+  endfunction
+
 endpackage
 
 `endif

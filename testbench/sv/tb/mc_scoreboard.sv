@@ -199,7 +199,8 @@ class mc_scoreboard extends uvm_component;
     end
     else begin
       req = req_t::type_id::create("sb_predict_req");
-      req.addr              = e.addr;
+      // The device is issued at the burst window base, so predict from there.
+      req.addr              = e.get_dev_addr();
       req.op                = e.op;
       req.beats             = e.beats;
       req.has_explicit_rank = e.has_explicit_rank;

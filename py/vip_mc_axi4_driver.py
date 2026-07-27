@@ -43,7 +43,9 @@ from vip_mc_axi4_types_pkg import (
   VIP_MC_AXI4_RESP_OKAY_C,
   VIP_MC_AXI4_RESP_SLVERR_C,
   VipMcAxi4CfgT,
+  vip_mc_axi4_burst_window_first_addr,
   vip_mc_axi4_size_bytes,
+  vip_mc_axi4_wrap_region_base_addr,
 )
 from vip_mc_cmd_entry import vip_mc_cmd_entry
 from vip_mc_config import vip_mc_config
@@ -502,16 +504,14 @@ class vip_mc_axi4_driver(vip_mc_fe_base):
 
   def get_burst_window_first_addr(self, addr: int, size_bytes: int, beats: int,
                                   axburst: int) -> int:
-    if axburst == VIP_MC_AXI4_BURST_WRAP_C:
-      return self.get_wrap_region_base_addr(addr, size_bytes, beats)
-    return int(addr)
+    # Shared with vip_mc_cmd_entry.get_dev_addr(), which is what the backend
+    # issues at. One definition, or the payload rows packed here and the device
+    # address issued there can drift apart.
+    return vip_mc_axi4_burst_window_first_addr(addr, size_bytes, beats, axburst)
 
   @staticmethod
   def get_wrap_region_base_addr(addr: int, size_bytes: int, beats: int) -> int:
-    if beats == 0 or size_bytes == 0:
-      return int(addr)
-    region_bytes = int(size_bytes) * int(beats)
-    return (int(addr) // region_bytes) * region_bytes
+    return vip_mc_axi4_wrap_region_base_addr(addr, size_bytes, beats)
 
   def last_byte_addr(self, addr: int, size_bytes: int, beats: int,
                      axburst: int) -> int:

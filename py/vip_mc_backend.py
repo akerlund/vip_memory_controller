@@ -448,7 +448,8 @@ class vip_mc_backend(uvm_subscriber):
 
   def entry_to_req(self, entry):
     req = VipDramReq(f"req_{entry.tag:x}")
-    req.addr = entry.addr
+    # Burst window base, not the protocol start address - see get_dev_addr().
+    req.addr = entry.get_dev_addr()
     req.op = entry.op
     req.beats = entry.beats
     req.has_explicit_rank = entry.has_explicit_rank

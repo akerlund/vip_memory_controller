@@ -238,8 +238,11 @@ class vip_mc_cmd_queue #(
       return 1'b0;
     end
 
+    // Compare where the payloads actually land on the device, not the protocol
+    // start addresses: two WRAP writes over the same region can start at
+    // different offsets inside it and still be row-for-row overlayable.
     align_mask = ~longint'(DRAM_CFG_P.ROW_BYTES_P - 1);
-    return (lhs.addr & align_mask) == (rhs.addr & align_mask);
+    return (lhs.get_dev_addr() & align_mask) == (rhs.get_dev_addr() & align_mask);
   endfunction
 
   // ---------------------------------------------------------------------------

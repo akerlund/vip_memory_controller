@@ -135,8 +135,11 @@ class vip_mc_cmd_queue:
       return False
     if len(lhs.wdata) != len(rhs.wdata) or len(lhs.wstrb) != len(rhs.wstrb):
       return False
+    # Compare where the payloads actually land on the device, not the protocol
+    # start addresses: two WRAP writes over the same region can start at
+    # different offsets inside it and still be row-for-row overlayable.
     align_mask = ~(self.geom.ROW_BYTES_P - 1)
-    return (lhs.addr & align_mask) == (rhs.addr & align_mask)
+    return (lhs.get_dev_addr() & align_mask) == (rhs.get_dev_addr() & align_mask)
 
   def overlay_write(self, dst, src) -> None:
     for beat_idx, src_data in enumerate(src.wdata):

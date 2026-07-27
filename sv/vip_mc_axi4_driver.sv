@@ -1044,11 +1044,15 @@ class vip_mc_axi4_driver #(
     input int unsigned     beats,
     input logic [1 : 0]    axburst
   );
-    if (axburst == VIP_MC_AXI4_BURST_WRAP_C) begin
-      return this.get_wrap_region_base_addr(addr, size_bytes, beats);
-    end
-
-    return addr;
+    // Shared with vip_mc_cmd_entry::get_dev_addr(), which is what the backend
+    // issues at. One definition, or the payload rows packed here and the device
+    // address issued there can drift apart.
+    return vip_mc_axi4_types_pkg::vip_mc_axi4_burst_window_first_addr(
+      .addr       ( addr       ),
+      .size_bytes ( size_bytes ),
+      .beats      ( beats      ),
+      .axburst    ( axburst    )
+    );
   endfunction
 
   // ---------------------------------------------------------------------------
@@ -1059,15 +1063,12 @@ class vip_mc_axi4_driver #(
     input int unsigned     size_bytes,
     input int unsigned     beats
   );
-    longint unsigned region_bytes;
 
-    if ((beats == 0) || (size_bytes == 0)) begin
-      return addr;
-    end
-
-    region_bytes = size_bytes;
-    region_bytes = region_bytes * beats;
-    return (addr / region_bytes) * region_bytes;
+    return vip_mc_axi4_types_pkg::vip_mc_axi4_wrap_region_base_addr(
+      .addr       ( addr       ),
+      .size_bytes ( size_bytes ),
+      .beats      ( beats      )
+    );
   endfunction
 
   // ---------------------------------------------------------------------------

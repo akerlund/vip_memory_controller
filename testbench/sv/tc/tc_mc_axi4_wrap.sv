@@ -29,6 +29,14 @@
 // WRAP write/read burst through the owned interface and checks that the FE
 // preserves wrapped beat order while the backend stores rows in wrap-region
 // address order.
+//
+// The burst deliberately starts mid-region (START_BEAT_INDEX_C), so the AXI
+// start address and the wrap-region base differ. Both the row order AND the
+// device address are checked: the rows are indexed from the region base, so an
+// access issued at the start address would place every row rotated by the start
+// offset and push the last one past the region. That defect is invisible to a
+// WRAP read-back - it rotates identically - which is why the address check
+// below has to be explicit.
 // -----------------------------------------------------------------------------
 class tc_mc_axi4_wrap extends mc_base_test;
 
@@ -108,6 +116,11 @@ class tc_mc_axi4_wrap extends mc_base_test;
     if (this._tb_env.u_mc.backend.last_issued_req.wdata[3] !== write_data_q[1]) begin
       `uvm_fatal(get_name(), "vip_mc backend WRAP write row 3 did not preserve the second post-start beat")
     end
+    if (this._tb_env.u_mc.backend.last_issued_req.addr !== WRAP_BASE_ADDR_C) begin
+      `uvm_fatal(get_name(), $sformatf(
+        "vip_mc backend issued the WRAP write at 0x%0h instead of the wrap-region base 0x%0h",
+        this._tb_env.u_mc.backend.last_issued_req.addr, WRAP_BASE_ADDR_C))
+    end
 
     this.axi4_read_custom(
       START_ADDR_C,
@@ -148,6 +161,11 @@ class tc_mc_axi4_wrap extends mc_base_test;
     end
     if (this._tb_env.u_mc.backend.last_completed_cmd.rdata[3] !== write_data_q[1]) begin
       `uvm_fatal(get_name(), "vip_mc backend WRAP read row 3 did not match the wrapped address order")
+    end
+    if (this._tb_env.u_mc.backend.last_issued_req.addr !== WRAP_BASE_ADDR_C) begin
+      `uvm_fatal(get_name(), $sformatf(
+        "vip_mc backend issued the WRAP read at 0x%0h instead of the wrap-region base 0x%0h",
+        this._tb_env.u_mc.backend.last_issued_req.addr, WRAP_BASE_ADDR_C))
     end
 
     if (fe0.issued_req_count != 2) begin
