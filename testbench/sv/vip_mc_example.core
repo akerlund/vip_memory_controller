@@ -13,6 +13,8 @@ filesets:
       - tb/mc_equiv_model.sv:                 {is_include_file: true}
       - tb/mc_equiv_program.sv:               {is_include_file: true}
       - tb/mc_scoreboard.sv:                      {is_include_file: true}
+      - tb/mc_soak_gen.sv:                    {is_include_file: true}
+      - tb/mc_coverage.sv:                    {is_include_file: true}
       - tb/mc_tb_env.sv:                      {is_include_file: true}
       - tb/mc_chi_tb_env.sv:                  {is_include_file: true}
       - tb/mc_mixed_tb_env.sv:                {is_include_file: true}
@@ -57,6 +59,8 @@ filesets:
       - tc/tc_mc_refresh_collision.sv:        {is_include_file: true}
       - tc/tc_mc_qos_scheduling.sv:           {is_include_file: true}
       - tc/tc_mc_qos_aging.sv:                {is_include_file: true}
+      - tc/tc_mc_axi4_soak.sv:                {is_include_file: true}
+      - tc/tc_mc_refresh_realistic.sv:        {is_include_file: true}
       - tc/mc_chi_base_test.sv:               {is_include_file: true}
       - tc/tc_mc_chi_d_write_read.sv:         {is_include_file: true}
       - tc/tc_mc_chi_d_read.sv:               {is_include_file: true}

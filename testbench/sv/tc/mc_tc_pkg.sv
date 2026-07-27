@@ -61,6 +61,7 @@ package mc_tc_pkg;
   `include "tc_mc_axi4_exclusive.sv"
   `include "tc_mc_axi4_fixed.sv"
   `include "tc_mc_axi4_read_multi_id.sv"
+  `include "tc_mc_axi4_soak.sv"
   `include "tc_mc_preset_sweep.sv"
   `include "tc_mc_axi4_ooo_inter_id.sv"
   `include "tc_mc_axi4_fr_fcfs_mixed_rd_wr.sv"
@@ -92,6 +93,7 @@ package mc_tc_pkg;
   `include "tc_mc_reset_recovery.sv"
   `include "tc_mc_multi_rank.sv"
   `include "tc_mc_refresh_collision.sv"
+  `include "tc_mc_refresh_realistic.sv"
   `include "tc_mc_qos_scheduling.sv"
   `include "tc_mc_qos_aging.sv"
 

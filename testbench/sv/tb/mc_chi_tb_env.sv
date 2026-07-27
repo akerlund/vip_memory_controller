@@ -68,6 +68,7 @@ class mc_chi_tb_env #(
 
   vip_chi_cfg_agent                                                rni_cfg;
   vip_chi_agent #(CHI_CFG_P, chi_types_l_t, VIP_CHI_ROLE_RNI_E)    rni_agent;
+  vip_chi_coverage #(CHI_CFG_P)                                    coverage;
 
   `uvm_component_param_utils(mc_chi_tb_env #(CHI_CFG_P, MC_CHI_CFG_P))
 
@@ -132,6 +133,40 @@ class mc_chi_tb_env #(
     this.env_cfg.apply(this, "u_mc*");
 
     this.u_mc = vip_mc #(DRAM_CFG_C, N_CHI_PORTS_L, CHI_PORTS_L)::type_id::create("u_mc", this);
+
+    this.build_coverage();
+  endfunction
+
+  // ---------------------------------------------------------------------------
+  // CHI protocol coverage. The agent already ships vip_chi_coverage; this env
+  // is the RN-I side of the link, so the RN-I channel taps are the ones with
+  // traffic. Opt out with mc_coverage_enabled = 0.
+  // ---------------------------------------------------------------------------
+  protected function void build_coverage();
+    int cov_enabled;
+
+    cov_enabled = 1;
+    void'(uvm_config_db #(int)::get(this, "", "mc_coverage_enabled", cov_enabled));
+    if (cov_enabled == 0) begin
+      return;
+    end
+
+    this.coverage = vip_chi_coverage #(CHI_CFG_P)::type_id::create("coverage", this);
+  endfunction
+
+  // ---------------------------------------------------------------------------
+  // Connect the RN-I channel monitors to the coverage collector.
+  // ---------------------------------------------------------------------------
+  function void connect_phase(input uvm_phase phase);
+    super.connect_phase(phase);
+
+    if (this.coverage == null) begin
+      return;
+    end
+
+    this.rni_agent.req_port.connect(this.coverage.rni_req_cov_port);
+    this.rni_agent.rsp_port.connect(this.coverage.rni_rsp_cov_port);
+    this.rni_agent.dat_port.connect(this.coverage.rni_dat_cov_port);
   endfunction
 
 endclass

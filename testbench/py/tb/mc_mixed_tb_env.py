@@ -28,9 +28,11 @@ from pyuvm import ConfigDB, UVMConfigItemNotFound, uvm_env
 
 from vip_axi4_agent import vip_axi4_agent
 from vip_axi4_cfg_agent import vip_axi4_cfg_agent
+from vip_axi4_coverage import vip_axi4_coverage
 from vip_axi4_types_pkg import Axi4Role
 from vip_chi_agent import vip_chi_agent
 from vip_chi_cfg_agent import UVM_ACTIVE, VipChiCfgAgent
+from vip_chi_coverage import vip_chi_coverage
 from vip_chi_types_pkg import Role
 from vip_dram import vip_dram
 from vip_dram_config import VipDramConfig
@@ -62,6 +64,8 @@ class mc_mixed_tb_env(uvm_env):
     self.man_agent = None
     self.rni_cfg = None
     self.rni_agent = None
+    self.axi4_coverage = None
+    self.chi_coverage = None
 
   def build_phase(self):
     self._resolve_config()
@@ -114,6 +118,35 @@ class mc_mixed_tb_env(uvm_env):
     ConfigDB().set(self, "rni_agent", "role", Role.RNI)
     ConfigDB().set(self, "rni_agent", "vif", self.rni_vif)
     self.rni_agent = vip_chi_agent("rni_agent", self)
+
+    self._build_coverage()
+
+  def _build_coverage(self):
+    """Protocol coverage on both host legs of the mixed topology. Opt out with
+    mc_coverage_enabled = 0."""
+    try:
+      if int(ConfigDB().get(self, "", "mc_coverage_enabled")) == 0:
+        return
+    except UVMConfigItemNotFound:
+      pass
+
+    ConfigDB().set(self, "axi4_coverage", "cfg_t", self.axi4_agent_cfg_t)
+    ConfigDB().set(self, "axi4_coverage", "vif", self.axi4_vif)
+    self.axi4_coverage = vip_axi4_coverage("axi4_coverage", self)
+
+    self.chi_coverage = vip_chi_coverage("chi_coverage", self)
+    self.chi_coverage.set_cfg(self.chi_cfg_t)
+
+  def connect_phase(self):
+    """Connect both host legs to their coverage collectors."""
+    if self.axi4_coverage is not None:
+      self.man_agent.monitor.bresp_port.connect(self.axi4_coverage.wr_cov_port)
+      self.man_agent.monitor.rdata_port.connect(self.axi4_coverage.rd_cov_port)
+
+    if self.chi_coverage is not None:
+      self.rni_agent.req_port.connect(self.chi_coverage.rni_req_cov_port)
+      self.rni_agent.rsp_port.connect(self.chi_coverage.rni_rsp_cov_port)
+      self.rni_agent.dat_port.connect(self.chi_coverage.rni_dat_cov_port)
 
   def _resolve_config(self) -> None:
     self.axi4_vif = ConfigDB().get(self, "", "axi4_vif")

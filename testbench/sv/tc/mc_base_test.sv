@@ -75,8 +75,13 @@ class mc_base_test extends mc_neutral_base_test;
   // Manager traffic sequences are declared + created once in the base test
   // (start_of_simulation_phase). The response-returning helpers below only
   // configure and start these handles per transaction.
-  vip_axi4_write_seq #(VIP_AXI4_AGENT_CFG_C) _man_wr_seq;
-  vip_axi4_read_seq  #(VIP_AXI4_AGENT_CFG_C) _man_rd_seq;
+  //
+  // One pair per port. A single shared pair would be enough for the directed
+  // tests, which drive one port at a time, but a test that forks a driver
+  // thread per port (tc_mc_axi4_soak) would then restart a sequence that is
+  // already running on the other port's sequencer.
+  vip_axi4_write_seq #(VIP_AXI4_AGENT_CFG_C) _man_wr_seq_port[N_PORTS_C];
+  vip_axi4_read_seq  #(VIP_AXI4_AGENT_CFG_C) _man_rd_seq_port[N_PORTS_C];
 
   // ---------------------------------------------------------------------------
   // Constructor.
@@ -125,8 +130,12 @@ class mc_base_test extends mc_neutral_base_test;
   function void start_of_simulation_phase(input uvm_phase phase);
     // super.start_of_simulation_phase creates the shared reset sequence.
     super.start_of_simulation_phase(phase);
-    this._man_wr_seq = vip_axi4_write_seq #(VIP_AXI4_AGENT_CFG_C)::type_id::create("man_wr_seq");
-    this._man_rd_seq = vip_axi4_read_seq  #(VIP_AXI4_AGENT_CFG_C)::type_id::create("man_rd_seq");
+    for (int port_id = 0; port_id < N_PORTS_C; port_id++) begin
+      this._man_wr_seq_port[port_id] = vip_axi4_write_seq #(VIP_AXI4_AGENT_CFG_C)::type_id::create(
+        $sformatf("man_wr_seq_%0d", port_id));
+      this._man_rd_seq_port[port_id] = vip_axi4_read_seq #(VIP_AXI4_AGENT_CFG_C)::type_id::create(
+        $sformatf("man_rd_seq_%0d", port_id));
+    end
   endfunction
 
   // ---------------------------------------------------------------------------
@@ -498,7 +507,7 @@ class mc_base_test extends mc_neutral_base_test;
     end
 
     // Configure + start the base-test-owned write sequence for this transaction.
-    wr_seq = this._man_wr_seq;
+    wr_seq = this._man_wr_seq_port[port_id];
     wr_seq.reset();
     wr_seq.set_awid(awid);
     wr_seq.set_axaddr(addr);
@@ -565,7 +574,7 @@ class mc_base_test extends mc_neutral_base_test;
     fe = this.get_port_fe(port_id);
 
     // Configure + start the base-test-owned read sequence for this transaction.
-    rd_seq = this._man_rd_seq;
+    rd_seq = this._man_rd_seq_port[port_id];
     rd_seq.reset();
     rd_seq.set_arid(arid);
     rd_seq.set_axaddr(addr);

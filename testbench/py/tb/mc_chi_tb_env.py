@@ -31,6 +31,7 @@ from pyuvm import ConfigDB, UVMConfigItemNotFound, uvm_env, uvm_subscriber
 
 from vip_chi_agent import vip_chi_agent
 from vip_chi_cfg_agent import UVM_ACTIVE, VipChiCfgAgent
+from vip_chi_coverage import vip_chi_coverage
 from vip_chi_types_pkg import Role
 
 from vip_dram import vip_dram
@@ -74,6 +75,7 @@ class mc_chi_tb_env(uvm_env):
     self.u_mc = None
     self.rni_cfg = None
     self.rni_agent = None
+    self.coverage = None
     self.rni_req_observations = []
     self.rni_rsp_observations = []
     self.rni_dat_observations = []
@@ -109,7 +111,27 @@ class mc_chi_tb_env(uvm_env):
     ConfigDB().set(self, "u_mc", "env_cfg", self.env_cfg)
     self.u_mc = vip_mc("u_mc", self)
 
+    self._build_coverage()
+
+  def _build_coverage(self):
+    """CHI protocol coverage. The agent already ships vip_chi_coverage; this env
+    is the RN-I side of the link, so the RN-I channel taps carry the traffic.
+    Opt out with mc_coverage_enabled = 0."""
+    try:
+      if int(ConfigDB().get(self, "", "mc_coverage_enabled")) == 0:
+        return
+    except UVMConfigItemNotFound:
+      pass
+
+    self.coverage = vip_chi_coverage("coverage", self)
+    self.coverage.set_cfg(self.chi_cfg_t)
+
   def connect_phase(self):
+    if self.coverage is not None:
+      self.rni_agent.req_port.connect(self.coverage.rni_req_cov_port)
+      self.rni_agent.rsp_port.connect(self.coverage.rni_rsp_cov_port)
+      self.rni_agent.dat_port.connect(self.coverage.rni_dat_cov_port)
+
     specs = [
         ("req", self.rni_agent.req_port, self.rni_req_observations),
         ("rsp", self.rni_agent.rsp_port, self.rni_rsp_observations),

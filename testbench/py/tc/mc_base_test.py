@@ -28,6 +28,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 import cocotb
 from cocotb.triggers import RisingEdge, Timer, with_timeout
@@ -50,6 +51,7 @@ from vip_dram_types_pkg import (
 from vip_mc_axi4_vif_holder import vip_mc_axi4_vif_holder
 from mc_equiv_model import mc_equiv_model
 from mc_equiv_program import EqOp, build_equiv_program
+from mc_soak_gen import beat_addr as soak_beat_addr, mc_soak_gen
 from vip_mc_axi4_types_pkg import (
   VIP_MC_AXI4_BURST_FIXED_C,
   VIP_MC_AXI4_BURST_INCR_C,
@@ -500,6 +502,15 @@ class mc_base_test(uvm_test):
   def get_full_width_axi_size(self) -> int:
     return (int(self.cfg_ts[0].WDATA_BYTES_P) - 1).bit_length()
 
+  @staticmethod
+  def get_axi_size_for_bytes(byte_count: int) -> int:
+    """AWSIZE/ARSIZE encoding for a power-of-two beat width. Mirrors
+    mc_base_test::get_axi_size_for_bytes in the SystemVerilog flow."""
+    n = int(byte_count)
+    if n < 1 or (n & (n - 1)) != 0:
+      raise ValueError(f"AXI4 beat width must be a power of two, got {n}")
+    return n.bit_length() - 1
+
   def encode_dram_addr(self, row=0, bg=0, bank=0, col=0, rank=0) -> int:
     dec = VipDramDecT()
     dec.row = int(row)
@@ -716,17 +727,31 @@ class mc_axi4_fixed_base(mc_base_test):
 
 
 class mc_axi4_wrap_base(mc_base_test):
+  """The burst deliberately starts mid-region, so the AXI start address and the
+  wrap-region base differ. Both the beat order AND the device address are
+  checked: the payload rows are indexed from the region base, so an access
+  issued at the start address would place every row rotated by the start offset
+  and push the last one past the region. That defect is invisible to a WRAP
+  read-back - it rotates identically - which is why the address check has to be
+  explicit."""
 
   async def body(self):
     beat_bytes = self.cfg_ts[0].WDATA_BYTES_P
-    start_addr = 0x0200 + (2 * beat_bytes)
+    wrap_base_addr = 0x0200
+    start_addr = wrap_base_addr + (2 * beat_bytes)
     beats = [0x1111111111111111 + i for i in range(4)]
     rsp = await self.write_axi(
         start_addr, beats, axi_id=7, burst=VIP_MC_AXI4_BURST_WRAP_C)
     self.assert_ok(rsp)
+    assert self.env.mc.backend.last_issued_req.addr == wrap_base_addr, (
+        f"WRAP write issued at 0x{self.env.mc.backend.last_issued_req.addr:x} "
+        f"instead of the wrap-region base 0x{wrap_base_addr:x}")
     got = await self.read_axi(
         start_addr, beats=4, axi_id=7, burst=VIP_MC_AXI4_BURST_WRAP_C)
     assert [d for d, _, _ in got] == beats
+    assert self.env.mc.backend.last_issued_req.addr == wrap_base_addr, (
+        f"WRAP read issued at 0x{self.env.mc.backend.last_issued_req.addr:x} "
+        f"instead of the wrap-region base 0x{wrap_base_addr:x}")
 
 
 class mc_axi4_user_passthrough_base(mc_base_test):
@@ -2620,3 +2645,340 @@ class mc_ecc_slverr_base(mc_base_test):
     assert got[0][0] != uncorr_data
     assert self.env.mc.get_ecc_corrected_count() == 1
     assert self.env.mc.get_ecc_uncorrectable_count() == 1
+
+
+class mc_axi4_soak_base(mc_base_test):
+  """Python side of tc_mc_axi4_soak - see testbench/sv/tc/tc_mc_axi4_soak.sv for
+  the full rationale. The suite's one constrained-random test: a randomized
+  mixed read/write program replayed concurrently on both AXI4 ports, with every
+  read byte checked against a golden model and a final backdoor sweep of the
+  whole written image.
+
+  Stimulus comes from mc_soak_gen, a shared explicit LCG that produces
+  byte-identical programs in this flow and the SystemVerilog one, so a failure
+  reproduces in both. Override with the MC_SOAK_TXNS / MC_SOAK_SEED /
+  MC_SOAK_WRAP_PCT environment variables (the plusargs' counterpart here).
+
+  Timing scoreboard is off: the random program hits write coalescing and
+  multi-outstanding grants constantly, and mc_scoreboard's predictor assumes one
+  device access maps to one host completion (docs/FURTHER_WORK.md item 5). Data
+  correctness is checked instead, which is the stronger property.
+  """
+
+  DEFAULT_TXNS = 96
+  DEFAULT_SEED = 1
+  DEFAULT_WRAP_PCT = 15
+  # Let each port hold a few transactions in flight so the backend actually has
+  # a queue to schedule over.
+  MAN_WR_OUTSTANDING_MAX = 4
+  MAN_RD_OUTSTANDING_MAX = 4
+  SCOREBOARD_TIMING_CHECK = False
+  DRAIN_TIMEOUT_CYCLES = 4096
+
+  async def body(self):
+    assert self.n_ports >= 2
+
+    txn_count = int(os.environ.get("MC_SOAK_TXNS", self.DEFAULT_TXNS))
+    seed = int(os.environ.get("MC_SOAK_SEED", self.DEFAULT_SEED))
+    # Trading WRAP share against INCR keeps FIXED at a constant 15%, so raising
+    # the WRAP knob does not silently drop the FIXED corner as well.
+    wrap_pct = int(os.environ.get("MC_SOAK_WRAP_PCT", self.DEFAULT_WRAP_PCT))
+    if wrap_pct > 85:
+      raise ValueError(
+          f"MC_SOAK_WRAP_PCT={wrap_pct} leaves no room for INCR (max 85)")
+
+    gen = mc_soak_gen(self.DRAM_GEOM, self.env.mc.cfg.addr_map_policy)
+    gen.n_ports = self.n_ports
+    gen.bus_bytes = self.DRAM_GEOM.ROW_BYTES_P
+    gen.wrap_percent = wrap_pct
+    gen.incr_percent = 85 - wrap_pct
+    gen.set_seed(seed)
+
+    model = mc_equiv_model()
+    model.clear()
+
+    program = gen.generate_program(txn_count)
+    self.logger.info(
+        f"Soak program: {txn_count} transactions, seed {seed}, "
+        f"{self.n_ports} ports")
+
+    port_txns = [[] for _ in range(self.n_ports)]
+    for txn in program:
+      port_txns[txn.port_id].append(txn)
+
+    self.writes_done = [0] * self.n_ports
+    self.reads_done = [0] * self.n_ports
+
+    # Ports run concurrently; within a port the program is replayed in order so
+    # the golden model stays exact without predicting arbitration.
+    threads = [
+        cocotb.start_soon(self._run_port(p, port_txns[p], model))
+        for p in range(self.n_ports)
+    ]
+    for thread in threads:
+      await thread
+
+    await self._wait_for_device_drain()
+    self._final_backdoor_sweep(model)
+
+    self.logger.info(
+        f"Soak complete: "
+        + ", ".join(f"port{p} {self.writes_done[p]} writes / "
+                    f"{self.reads_done[p]} reads"
+                    for p in range(self.n_ports)))
+
+  async def _run_port(self, port_id, txns, model):
+    """Replay one port's slice of the program in order."""
+    bus = self.buses[port_id]
+    for idx, t in enumerate(txns):
+      for _ in range(t.gap_cycles):
+        await RisingEdge(bus.clk)
+
+      # Set MC_SOAK_TRACE=1 to dump the generated program; that is how a soak
+      # failure gets narrowed to one transaction.
+      if os.environ.get("MC_SOAK_TRACE"):
+        self.logger.info(
+            f"soak port {port_id} txn {idx}: "
+            f"{'WR' if t.is_write else 'RD'} addr 0x{t.addr:x} "
+            f"burst {t.burst} beats {t.beats} size {t.size_bytes} "
+            f"id {t.axi_id} qos {t.qos} gap {t.gap_cycles}")
+
+      if t.is_write:
+        await self._drive_write(port_id, idx, t, model)
+      else:
+        await self._drive_read(port_id, idx, t, model)
+
+  async def _drive_write(self, port_id, idx, t, model):
+    """Drive one randomized write and fold it into the golden model.
+
+    Lane placement: a beat of size_bytes at byte address `ba` occupies bus lanes
+    [ba % bus_bytes +: size_bytes]. The start address is size-aligned by
+    construction, so a beat never straddles the lane window.
+    """
+    bus_bytes = self.DRAM_GEOM.ROW_BYTES_P
+    data_beats = []
+    strb_beats = []
+
+    for b in range(t.beats):
+      ba = soak_beat_addr(t, b)
+      lane = ba % bus_bytes
+      word = 0
+      strb = 0
+      for k in range(t.size_bytes):
+        word |= t.payload[(b * t.size_bytes) + k] << (8 * (lane + k))
+        strb |= 1 << (lane + k)
+      data_beats.append(word)
+      strb_beats.append(strb)
+
+    bresp = await self.write_axi(
+        t.addr, data_beats, strb_beats=strb_beats, axi_id=t.axi_id,
+        size=self.get_axi_size_for_bytes(t.size_bytes), burst=t.burst,
+        awqos=t.qos, port_id=port_id)
+
+    if bresp != VIP_MC_AXI4_RESP_OKAY_C:
+      raise AssertionError(
+          f"soak txn {idx} port {port_id}: write at 0x{t.addr:x} "
+          f"returned BRESP {bresp}")
+
+    # Fold into the model only after the write is accepted, in beat order, so a
+    # FIXED burst's later beats correctly overwrite the earlier ones.
+    for b in range(t.beats):
+      ba = soak_beat_addr(t, b)
+      beat_bytes = t.payload[(b * t.size_bytes):((b + 1) * t.size_bytes)]
+      model.write(ba, beat_bytes)
+
+    self.writes_done[port_id] += 1
+
+  async def _drive_read(self, port_id, idx, t, model):
+    """Drive one randomized read and check every beat against the model."""
+    bus_bytes = self.DRAM_GEOM.ROW_BYTES_P
+
+    beats = await self.read_axi(
+        t.addr, beats=t.beats, axi_id=t.axi_id,
+        size=self.get_axi_size_for_bytes(t.size_bytes), burst=t.burst,
+        arqos=t.qos, port_id=port_id)
+
+    for b, (data, resp, _last) in enumerate(beats):
+      if resp != VIP_MC_AXI4_RESP_OKAY_C:
+        raise AssertionError(
+            f"soak txn {idx} port {port_id}: read at 0x{t.addr:x} beat {b} "
+            f"returned RRESP {resp}")
+
+    for b, (data, _resp, _last) in enumerate(beats):
+      ba = soak_beat_addr(t, b)
+      lane = ba % bus_bytes
+      got = [(int(data) >> (8 * (lane + k))) & 0xFF
+             for k in range(t.size_bytes)]
+      if not model.check_read(ba, got, f"soak txn {idx} port {port_id} beat {b}"):
+        raise AssertionError(
+            f"soak txn {idx} port {port_id} beat {b}: read data mismatch "
+            f"at 0x{ba:x}")
+
+    self.reads_done[port_id] += 1
+
+  async def _wait_for_device_drain(self):
+    """A host write completes when the controller accepts it, which is not the
+    same instant the device commits it. Wait for the backend to have no access
+    outstanding before reading the device directly, or the sweep races the write
+    path and reports stale bytes that are simply not there yet."""
+    backend = self.env.mc.backend
+    bus = self.buses[0]
+    guard = 0
+    while (backend.get_inflight_to_device() > 0
+           or backend.issued_req_count != backend.observed_rsp_count):
+      await RisingEdge(bus.clk)
+      guard += 1
+      if guard > self.DRAIN_TIMEOUT_CYCLES:
+        raise AssertionError(
+            f"backend did not drain: {backend.issued_req_count} issued, "
+            f"{backend.observed_rsp_count} observed, "
+            f"{backend.get_inflight_to_device()} in flight")
+
+    # One more device-access window so a just-completed write is committed to
+    # storage before the backdoor reads it.
+    for _ in range(16):
+      await RisingEdge(bus.clk)
+
+  def _final_backdoor_sweep(self, model):
+    """Independent end-of-test check: read every byte the model believes it
+    wrote straight out of the device, bypassing the controller entirely. Catches
+    anything the in-flight read checks could not see - a write that landed at
+    the wrong address, or one that never landed at all."""
+    bus_bytes = self.DRAM_GEOM.ROW_BYTES_P
+    mismatches = 0
+    checked = 0
+    reported = []
+    word_cache = {}
+
+    for addr in sorted(model.mem.keys()):
+      expected_byte = model.mem[addr] & 0xFF
+      word_addr = addr - (addr % bus_bytes)
+      if word_addr not in word_cache:
+        word_cache[word_addr] = int(self.env.mc.dram.backdoor_read(word_addr))
+      got_byte = (word_cache[word_addr] >> (8 * (addr % bus_bytes))) & 0xFF
+      checked += 1
+
+      if got_byte != expected_byte:
+        mismatches += 1
+        if len(reported) < 8:
+          reported.append(
+              f"device byte at 0x{addr:x} is 0x{got_byte:02x}, "
+              f"model says 0x{expected_byte:02x}")
+
+    self.logger.info(
+        f"Backdoor sweep checked {checked} bytes, {mismatches} mismatches")
+
+    if mismatches:
+      detail = "; ".join(reported)
+      raise AssertionError(
+          f"backdoor sweep: {mismatches} mismatching bytes ({detail})")
+
+
+class mc_refresh_realistic_base(mc_base_test):
+  """Python side of tc_mc_refresh_realistic - see
+  testbench/sv/tc/tc_mc_refresh_realistic.sv for the full rationale.
+
+  The only test in the suite where a refresh happens because time passed. Every
+  other refresh test shortens tREFI through the trefi_override knob or forces
+  the deferred policy, because the directed tests finish in tens to hundreds of
+  clock cycles while the device's real tREFI is 7800 ns. This one removes the
+  override and drives continuous checked traffic across several native tREFI
+  intervals, then checks the emitted cadence against elapsed time and that the
+  device executed every refresh the controller emitted.
+
+  Override the length with the MC_REFRESH_INTERVALS environment variable.
+  """
+
+  DEFAULT_INTERVALS = 5
+  # Keep a few accesses queued so refresh always has real work to interrupt.
+  MAN_WR_OUTSTANDING_MAX = 4
+  MAN_RD_OUTSTANDING_MAX = 4
+  # A refresh landing mid-queue moves completions by a whole tRFC, which the
+  # predictor models per access rather than per queue (FURTHER_WORK item 5).
+  SCOREBOARD_TIMING_CHECK = False
+  BANK_ROTATION = 8
+  REF_TAG = 0x5EF00000
+
+  def configure(self, cfg) -> None:
+    # This flow's base test disables refresh by default (the SystemVerilog env
+    # leaves it on), so it has to be turned back on explicitly here.
+    cfg.refresh_enabled = True
+    # Note what is NOT set: tREFI_override stays at its -1.0 default. That is
+    # the whole point of the test - the device's own tREFI applies.
+
+  async def body(self):
+    intervals = int(os.environ.get("MC_REFRESH_INTERVALS",
+                                   self.DEFAULT_INTERVALS))
+
+    dram = self.env.mc.dram
+    trefi_ns = float(dram.cfg.timing.tREFI)
+    if trefi_ns <= 0.0:
+      raise AssertionError("device reports a non-positive tREFI")
+
+    self.logger.info(
+        f"Native tREFI = {trefi_ns:.1f} ns, tRFC = {dram.cfg.timing.tRFC:.1f} ns, "
+        f"covering {intervals} intervals (~{trefi_ns * intervals / 1000.0:.1f} us)")
+
+    mc_ref_base = self.env.mc.get_refresh_count()
+    dram_ref_base = dram.get_refresh_count()
+    t_start = sim_time_ns()
+    t_end = t_start + (trefi_ns * intervals)
+
+    txn_index = 0
+    while sim_time_ns() < t_end:
+      await self._drive_one_checked_access(txn_index)
+      txn_index += 1
+
+    elapsed_ns = sim_time_ns() - t_start
+    mc_refreshes = self.env.mc.get_refresh_count() - mc_ref_base
+    dram_refreshes = dram.get_refresh_count() - dram_ref_base
+
+    # The window starts and ends at arbitrary points inside a tREFI period, so
+    # the exact count can be one either side of the ideal.
+    expected = elapsed_ns / trefi_ns
+
+    self.logger.info(
+        f"Ran {txn_index} accesses over {elapsed_ns:.1f} ns: "
+        f"{mc_refreshes} refreshes emitted, {dram_refreshes} executed, "
+        f"{expected:.2f} expected")
+
+    if mc_refreshes < 1:
+      raise AssertionError(
+          "no refresh fired in a window spanning several native tREFI intervals")
+
+    if not (expected - 1.0) <= mc_refreshes <= (expected + 1.0):
+      raise AssertionError(
+          f"refresh cadence off: {mc_refreshes} emitted over {elapsed_ns:.1f} ns, "
+          f"expected ~{expected:.2f} at tREFI {trefi_ns:.1f} ns")
+
+    if dram_refreshes != mc_refreshes:
+      raise AssertionError(
+          f"device executed {dram_refreshes} refreshes but the controller "
+          f"emitted {mc_refreshes}")
+
+  async def _drive_one_checked_access(self, txn_index):
+    """One write/read pair at a rotating address, checked immediately. Rotating
+    the bank keeps page management in play; the data pattern folds in the
+    transaction index so a stale readback cannot pass by accident."""
+    bank = txn_index % self.DRAM_GEOM.BANKS_PER_BG_P
+    bg = (txn_index // self.DRAM_GEOM.BANKS_PER_BG_P) % self.DRAM_GEOM.N_BANK_GROUPS_P
+    row = (txn_index // self.BANK_ROTATION) % 16
+    addr = self.encode_dram_addr(row=row, bg=bg, bank=bank, col=txn_index % 64)
+
+    data = (((self.REF_TAG ^ txn_index) & 0xFFFFFFFF) << 32) | (txn_index & 0xFFFFFFFF)
+
+    bresp = await self.write_axi(addr, data, axi_id=3)
+    if bresp != VIP_MC_AXI4_RESP_OKAY_C:
+      raise AssertionError(
+          f"access {txn_index}: write at 0x{addr:x} returned BRESP {bresp}")
+
+    beats = await self.read_axi(addr, axi_id=5)
+    rdata, rresp, _last = beats[0]
+    if rresp != VIP_MC_AXI4_RESP_OKAY_C:
+      raise AssertionError(
+          f"access {txn_index}: read at 0x{addr:x} returned RRESP {rresp}")
+    if (int(rdata) & 0xFFFFFFFFFFFFFFFF) != data:
+      raise AssertionError(
+          f"access {txn_index}: readback at 0x{addr:x} got "
+          f"0x{int(rdata) & 0xFFFFFFFFFFFFFFFF:x} expected 0x{data:x} - "
+          f"a refresh lost data")

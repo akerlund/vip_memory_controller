@@ -53,6 +53,8 @@ class mc_mixed_tb_env extends uvm_env;
   vip_axi4_agent #(VIP_AXI4_AGENT_CFG_C, VIP_AXI4_ROLE_MANAGER_E) man_agent;
   vip_chi_cfg_agent                                              rni_cfg;
   vip_chi_agent #(VIP_CHI_CFG_C, chi_types_t, VIP_CHI_ROLE_RNI_E) rni_agent;
+  vip_axi4_coverage #(VIP_AXI4_AGENT_CFG_C)                       axi4_coverage;
+  vip_chi_coverage  #(VIP_CHI_CFG_C)                              chi_coverage;
 
   `uvm_component_utils(mc_mixed_tb_env)
 
@@ -138,6 +140,48 @@ class mc_mixed_tb_env extends uvm_env;
     uvm_config_db #(vip_chi_cfg_agent)::set(this, "rni_agent", "cfg", this.rni_cfg);
     this.rni_agent = vip_chi_agent #(VIP_CHI_CFG_C, chi_types_t, VIP_CHI_ROLE_RNI_E)::type_id::create(
       "rni_agent", this);
+
+    this.build_coverage();
+  endfunction
+
+  // ---------------------------------------------------------------------------
+  // Protocol coverage on both host legs of the mixed topology. Opt out with
+  // mc_coverage_enabled = 0.
+  // ---------------------------------------------------------------------------
+  protected function void build_coverage();
+    int cov_enabled;
+
+    cov_enabled = 1;
+    void'(uvm_config_db #(int)::get(this, "", "mc_coverage_enabled", cov_enabled));
+    if (cov_enabled == 0) begin
+      return;
+    end
+
+    uvm_config_db #(
+      virtual vip_axi4_if #(VIP_AXI4_AGENT_CFG_C, VIP_AXI4_ROLE_MANAGER_E)
+    )::set(this, "axi4_coverage", "vif", this._man_vif);
+    this.axi4_coverage = vip_axi4_coverage #(
+      VIP_AXI4_AGENT_CFG_C)::type_id::create("axi4_coverage", this);
+    this.chi_coverage = vip_chi_coverage #(
+      VIP_CHI_CFG_C)::type_id::create("chi_coverage", this);
+  endfunction
+
+  // ---------------------------------------------------------------------------
+  // Connect both host legs to their coverage collectors.
+  // ---------------------------------------------------------------------------
+  function void connect_phase(input uvm_phase phase);
+    super.connect_phase(phase);
+
+    if (this.axi4_coverage != null) begin
+      this.man_agent.monitor.bresp_port.connect(this.axi4_coverage.wr_cov_port);
+      this.man_agent.monitor.rdata_port.connect(this.axi4_coverage.rd_cov_port);
+    end
+
+    if (this.chi_coverage != null) begin
+      this.rni_agent.req_port.connect(this.chi_coverage.rni_req_cov_port);
+      this.rni_agent.rsp_port.connect(this.chi_coverage.rni_rsp_cov_port);
+      this.rni_agent.dat_port.connect(this.chi_coverage.rni_dat_cov_port);
+    end
   endfunction
 
   // ---------------------------------------------------------------------------

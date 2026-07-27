@@ -116,6 +116,8 @@ from tc_mc_axi4_ooo_inter_id import tc_mc_axi4_ooo_inter_id  # noqa: E402,F401
 from tc_mc_fr_fcfs_starvation_cap import tc_mc_fr_fcfs_starvation_cap  # noqa: E402,F401
 from tc_mc_qos_scheduling import tc_mc_qos_scheduling  # noqa: E402,F401
 from tc_mc_qos_aging import tc_mc_qos_aging  # noqa: E402,F401
+from tc_mc_axi4_soak import tc_mc_axi4_soak  # noqa: E402,F401
+from tc_mc_refresh_realistic import tc_mc_refresh_realistic  # noqa: E402,F401
 from tc_mc_rd_wr_grouping import tc_mc_rd_wr_grouping  # noqa: E402,F401
 from tc_mc_observability import tc_mc_observability  # noqa: E402,F401
 from tc_mc_telemetry_counters import tc_mc_telemetry_counters  # noqa: E402,F401
@@ -504,6 +506,20 @@ async def tc_mc_qos_scheduling(dut):
 @cocotb.test(timeout_time=5, timeout_unit="ms")
 async def tc_mc_qos_aging(dut):
   await _run_uvm(dut, "tc_mc_qos_aging")
+
+
+# The soak replays ~96 randomized transactions across both ports, so it needs a
+# larger budget than the directed tests' 5 ms.
+@cocotb.test(timeout_time=60, timeout_unit="ms")
+async def tc_mc_axi4_soak(dut):
+  await _run_uvm(dut, "tc_mc_axi4_soak", prefixes=["p0_", "p1_"])
+
+
+# Runs for several native tREFI windows (~39 us at the default 5 intervals) -
+# by far the longest test here, which is the property being tested.
+@cocotb.test(timeout_time=120, timeout_unit="ms")
+async def tc_mc_refresh_realistic(dut):
+  await _run_uvm(dut, "tc_mc_refresh_realistic")
 
 
 @cocotb.test(timeout_time=5, timeout_unit="ms")

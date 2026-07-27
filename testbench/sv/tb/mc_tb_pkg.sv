@@ -314,7 +314,9 @@ package mc_tb_pkg;
 
   localparam chi_item_n32_t::addr_t CHI_NARROW_ADDR_C = chi_item_n32_t::addr_t'('h000A_0000);
 
+  `include "mc_soak_gen.sv"
   `include "mc_scoreboard.sv"
+  `include "mc_coverage.sv"
   `include "mc_tb_env.sv"
 
   // Specialized self-contained topologies (each reuses the shared tb_top

@@ -34,6 +34,8 @@ from vip_axi4_agent import vip_axi4_agent
 from vip_axi4_cfg_agent import vip_axi4_cfg_agent
 from vip_axi4_types_pkg import Axi4Role
 from mc_scoreboard import mc_scoreboard
+from mc_coverage import mc_coverage
+from vip_axi4_coverage import vip_axi4_coverage
 from vip_mc import vip_mc
 
 
@@ -81,6 +83,8 @@ class mc_tb_env(uvm_env):
     super().__init__(name, parent)
     self.mc = None
     self.scoreboard = None
+    self.coverage = None
+    self.man_coverage = []
     self.man_cfg = []
     self.man_agent = []
     self.b_collectors = []
@@ -110,6 +114,33 @@ class mc_tb_env(uvm_env):
     self.mc = vip_mc("mc", self)
     self.scoreboard = mc_scoreboard("scoreboard", self)
     self._build_manager_agents()
+    self._build_coverage()
+
+  def _build_coverage(self):
+    """Functional coverage, opt-out via the mc_coverage_enabled knob:
+
+      ConfigDB().set(None, "*", "mc_coverage_enabled", 0)
+
+    Two layers: vip_axi4_coverage per manager port (AXI4 protocol coverage the
+    agent already ships but no vip_mc env instantiated until now), and
+    mc_coverage for the controller-specific scheduling decisions.
+    """
+    try:
+      if int(ConfigDB().get(self, "", "mc_coverage_enabled")) == 0:
+        return
+    except UVMConfigItemNotFound:
+      pass
+
+    for port_id in range(len(self.man_agent)):
+      cfg_t = (self.axi4_cfg_ts[port_id]
+               if port_id < len(self.axi4_cfg_ts) else self.axi4_cfg_ts[0])
+      cov_name = f"man_coverage_{port_id}"
+      ConfigDB().set(self, cov_name, "cfg_t", cfg_t)
+      ConfigDB().set(self, cov_name, "vif", self.axi4_vifs[port_id])
+      self.man_coverage.append(vip_axi4_coverage(cov_name, self))
+
+    ConfigDB().set(self, "coverage", "n_ports", self.n_ports)
+    self.coverage = mc_coverage("coverage", self)
 
   def connect_phase(self):
     self.mc.backend.issued_port.connect(self.scoreboard.analysis_export)
@@ -136,6 +167,31 @@ class mc_tb_env(uvm_env):
       self.b_collectors.append(b_collector)
       self.r_collectors.append(r_collector)
       self._connect_manager_observation_collectors(port_id, agent)
+    self._connect_coverage()
+
+  def _connect_coverage(self):
+    """AXI4 protocol coverage taps the same manager B/R streams the scoreboard
+    uses; the controller coverage taps the backend grant and DRAM response."""
+    for port_id, cov in enumerate(self.man_coverage):
+      agent = self.man_agent[port_id]
+      agent.monitor.bresp_port.connect(cov.wr_cov_port)
+      agent.monitor.rdata_port.connect(cov.rd_cov_port)
+
+    if self.coverage is None:
+      return
+
+    self.coverage.dram = self.mc.dram
+    self.coverage.mc = self.mc
+    self.mc.backend.issued_port.connect(self.coverage.issued_export)
+    self.mc.dram.rsp_port.connect(self.coverage.dram_rsp_export)
+
+    for port_id, agent in enumerate(self.man_agent):
+      if port_id >= len(self.coverage.b_collectors):
+        break
+      agent.monitor.bresp_port.connect(
+          self.coverage.b_collectors[port_id].analysis_export)
+      agent.monitor.rdata_port.connect(
+          self.coverage.r_collectors[port_id].analysis_export)
 
   def _resolve_cfg(self):
     try:

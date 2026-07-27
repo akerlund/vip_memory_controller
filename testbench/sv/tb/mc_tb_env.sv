@@ -36,13 +36,22 @@ class mc_tb_env extends uvm_env;
   virtual vip_mc_status_if #(N_PORTS_C) _status_vif;
   virtual clk_rst_if                    _clk_rst_vif;
 
-  env_cfg_t                                env_cfg;
-  vip_dram #(DRAM_CFG_C) dram;
-  vip_mc   #(DRAM_CFG_C, N_PORTS_C, PORTS_C) u_mc;
-  vip_axi4_cfg_agent                                        man_cfg[N_PORTS_C];
-  vip_axi4_agent #(VIP_AXI4_AGENT_CFG_C, VIP_AXI4_ROLE_MANAGER_E) man_agent[N_PORTS_C];
-  clk_rst_agent                                             clk_agent;
-  mc_scoreboard                                             scoreboard;
+  env_cfg_t                  env_cfg;
+  vip_dram #(
+    DRAM_CFG_C)              dram;
+  vip_mc #(
+    DRAM_CFG_C,
+    N_PORTS_C,
+    PORTS_C)                 u_mc;
+  vip_axi4_cfg_agent         man_cfg [N_PORTS_C];
+  vip_axi4_agent #(
+    VIP_AXI4_AGENT_CFG_C,
+    VIP_AXI4_ROLE_MANAGER_E) man_agent[N_PORTS_C];
+  clk_rst_agent              clk_agent;
+  mc_scoreboard              scoreboard;
+  vip_axi4_coverage #(
+    VIP_AXI4_AGENT_CFG_C)    man_coverage[N_PORTS_C];
+  mc_coverage                coverage;
 
   `uvm_component_utils(mc_tb_env)
 
@@ -57,24 +66,25 @@ class mc_tb_env extends uvm_env;
   // Build the DRAM device model used by the config test.
   // ---------------------------------------------------------------------------
   function void build_phase(input uvm_phase phase);
-    axi4_vif_holder_t vif_holder;
+
+    axi4_vif_holder_t   vif_holder;
     vip_dram_addr_map_t default_map;
-    real mc_trefi_override_ns;
-    int  mc_refresh_enabled;
-    int  mc_refresh_policy;
-    int  mc_refresh_max_deferred;
-    int  mc_init_delay_enabled;
-    real mc_init_delay_ns;
-    int  mc_rsp_buf_depth;
-    int  mc_w_data_buf_depth;
-    int  mc_honor_beat_timing;
-    int  mc_max_inflight_to_device;
-    int  manager_agents_active;
-    int  man_wr_outstanding_max;
-    int  man_rd_outstanding_max;
-    string vif_key;
-    string man_vif_key;
-    string agent_name;
+    real                mc_trefi_override_ns;
+    int                 mc_refresh_enabled;
+    int                 mc_refresh_policy;
+    int                 mc_refresh_max_deferred;
+    int                 mc_init_delay_enabled;
+    real                mc_init_delay_ns;
+    int                 mc_rsp_buf_depth;
+    int                 mc_w_data_buf_depth;
+    int                 mc_honor_beat_timing;
+    int                 mc_max_inflight_to_device;
+    int                 manager_agents_active;
+    int                 man_wr_outstanding_max;
+    int                 man_rd_outstanding_max;
+    string              vif_key;
+    string              man_vif_key;
+    string              agent_name;
 
     super.build_phase(phase);
 
@@ -240,6 +250,45 @@ class mc_tb_env extends uvm_env;
     end
 
     this.build_timing_scoreboard();
+    this.build_coverage();
+  endfunction
+
+  // ---------------------------------------------------------------------------
+  // Build the functional-coverage collectors. Opt-out via config_db so a test
+  // that only cares about wall-clock (or that resets mid-run) can drop them:
+  //
+  //   uvm_config_db #(int)::set(this, "*", "mc_coverage_enabled", 0);
+  //
+  // Two layers are built:
+  //   1. vip_axi4_coverage, one per manager port - AXI4 protocol coverage that
+  //      the agent already ships but no vip_mc env instantiated until now.
+  //   2. mc_coverage - controller-specific scheduling / front-end / backend
+  //      coverage that only this example can observe.
+  // ---------------------------------------------------------------------------
+  protected function void build_coverage();
+    int cov_enabled;
+    string cov_name;
+
+    cov_enabled = 1;
+    void'(uvm_config_db #(int)::get(this, "", "mc_coverage_enabled", cov_enabled));
+    if (cov_enabled == 0) begin
+      return;
+    end
+
+    for (int port_id = 0; port_id < N_PORTS_C; port_id++) begin
+      if (this.man_agent[port_id] == null) begin
+        continue;
+      end
+      cov_name = $sformatf("man_coverage_%0d", port_id);
+      // The vif enables the cycle-accurate backpressure / interleaving groups.
+      uvm_config_db #(
+        virtual vip_axi4_if #(VIP_AXI4_AGENT_CFG_C, VIP_AXI4_ROLE_MANAGER_E)
+      )::set(this, cov_name, "vif", this._man_vif[port_id]);
+      this.man_coverage[port_id] = vip_axi4_coverage #(
+        VIP_AXI4_AGENT_CFG_C)::type_id::create(cov_name, this);
+    end
+
+    this.coverage = mc_coverage::type_id::create("coverage", this);
   endfunction
 
   // ---------------------------------------------------------------------------
@@ -280,18 +329,45 @@ class mc_tb_env extends uvm_env;
   function void connect_phase(input uvm_phase phase);
     super.connect_phase(phase);
 
-    if (this.scoreboard == null) begin
-      return;
+    if (this.scoreboard != null) begin
+      this.u_mc.backend.issued_port.connect(this.scoreboard.issued_export);
+
+      for (int port_id = 0; port_id < N_PORTS_C; port_id++) begin
+        if (this.man_agent[port_id] != null) begin
+          this.man_agent[port_id].monitor.bresp_port.connect(
+            this.scoreboard.b_collector[port_id].analysis_export);
+          this.man_agent[port_id].monitor.rdata_port.connect(
+            this.scoreboard.r_collector[port_id].analysis_export);
+        end
+      end
     end
 
-    this.u_mc.backend.issued_port.connect(this.scoreboard.issued_export);
-
+    // AXI4 protocol coverage taps the same manager B/R streams the scoreboard
+    // uses; the controller coverage taps the backend grant and DRAM response.
     for (int port_id = 0; port_id < N_PORTS_C; port_id++) begin
-      if (this.man_agent[port_id] != null) begin
+      if (this.man_coverage[port_id] == null) begin
+        continue;
+      end
+      this.man_agent[port_id].monitor.bresp_port.connect(
+        this.man_coverage[port_id].wr_cov_port);
+      this.man_agent[port_id].monitor.rdata_port.connect(
+        this.man_coverage[port_id].rd_cov_port);
+    end
+
+    if (this.coverage != null) begin
+      this.coverage.dram = this.dram;
+      this.coverage.u_mc = this.u_mc;
+      this.u_mc.backend.issued_port.connect(this.coverage.issued_export);
+      this.dram.rsp_port.connect(this.coverage.dram_rsp_export);
+
+      for (int port_id = 0; port_id < N_PORTS_C; port_id++) begin
+        if (this.man_agent[port_id] == null) begin
+          continue;
+        end
         this.man_agent[port_id].monitor.bresp_port.connect(
-          this.scoreboard.b_collector[port_id].analysis_export);
+          this.coverage.b_collector[port_id].analysis_export);
         this.man_agent[port_id].monitor.rdata_port.connect(
-          this.scoreboard.r_collector[port_id].analysis_export);
+          this.coverage.r_collector[port_id].analysis_export);
       end
     end
   endfunction
