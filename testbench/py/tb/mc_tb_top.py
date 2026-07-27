@@ -80,15 +80,9 @@ for p in _PYS:
   _add_required_path(p)
 
 _CHI_PY = os.path.join(_ROOT, "submodules", "vip_chi_agent", "py")
-_HAVE_CHI = (
-    os.path.isdir(_CHI_PY) and
-    os.path.isdir(os.path.join(_CHI_PY, "seq_lib")))
-if _HAVE_CHI:
-  _CHI_SEQ_PY = os.path.join(_CHI_PY, "seq_lib")
-  if _CHI_SEQ_PY not in sys.path:
-    sys.path.insert(0, _CHI_SEQ_PY)
-  if _CHI_PY not in sys.path:
-    sys.path.append(_CHI_PY)
+_add_required_path(os.path.join(_CHI_PY, "seq_lib"))
+if _CHI_PY not in sys.path:
+  sys.path.append(_CHI_PY)
 
 import test_mc_core as core  # noqa: E402
 from vip_axi4_if import Axi4Bus  # noqa: E402
@@ -138,24 +132,23 @@ from tc_mc_preset_sweep import tc_mc_preset_sweep  # noqa: E402,F401
 from tc_mc_ecc_slverr import tc_mc_ecc_slverr  # noqa: E402,F401
 from vip_mc_status_if import vip_mc_status_if  # noqa: E402
 
-if _HAVE_CHI:
-  from vip_chi_if import ChiBus  # noqa: E402
-  from vip_chi_types_pkg import ChiCfg, Issue, Role  # noqa: E402
-  from tc_mc_chi_d_read import tc_mc_chi_d_read  # noqa: E402,F401
-  from tc_mc_chi_d_write_read import tc_mc_chi_d_write_read  # noqa: E402,F401
-  from tc_mc_chi_d_write_ptl import tc_mc_chi_d_write_ptl  # noqa: E402,F401
-  from tc_mc_chi_d_decerr import tc_mc_chi_d_decerr  # noqa: E402,F401
-  from tc_mc_chi_d_combined_write import tc_mc_chi_d_combined_write  # noqa: E402,F401
-  from tc_mc_chi_d_persist import tc_mc_chi_d_persist  # noqa: E402,F401
-  from tc_mc_chi_d_unsupported import tc_mc_chi_d_unsupported  # noqa: E402,F401
-  from tc_mc_chi_d_reject import tc_mc_chi_d_reject  # noqa: E402,F401
-  from tc_mc_chi_d_narrow import tc_mc_chi_d_narrow  # noqa: E402,F401
-  from tc_mc_chi_e_write_read import tc_mc_chi_e_write_read  # noqa: E402,F401
-  from tc_mc_chi_e_write_zero import tc_mc_chi_e_write_zero  # noqa: E402,F401
-  from tc_mc_chi_e_read_sep import tc_mc_chi_e_read_sep  # noqa: E402,F401
-  from tc_mc_equiv_chi import tc_mc_equiv_chi_d  # noqa: E402,F401
-  from tc_mc_equiv_chi import tc_mc_equiv_chi_e  # noqa: E402,F401
-  from tc_mc_mixed_concurrent import tc_mc_mixed_concurrent  # noqa: E402,F401
+from vip_chi_if import ChiBus  # noqa: E402
+from vip_chi_types_pkg import ChiCfg, Issue, Role  # noqa: E402
+from tc_mc_chi_d_read import tc_mc_chi_d_read  # noqa: E402,F401
+from tc_mc_chi_d_write_read import tc_mc_chi_d_write_read  # noqa: E402,F401
+from tc_mc_chi_d_write_ptl import tc_mc_chi_d_write_ptl  # noqa: E402,F401
+from tc_mc_chi_d_decerr import tc_mc_chi_d_decerr  # noqa: E402,F401
+from tc_mc_chi_d_combined_write import tc_mc_chi_d_combined_write  # noqa: E402,F401
+from tc_mc_chi_d_persist import tc_mc_chi_d_persist  # noqa: E402,F401
+from tc_mc_chi_d_unsupported import tc_mc_chi_d_unsupported  # noqa: E402,F401
+from tc_mc_chi_d_reject import tc_mc_chi_d_reject  # noqa: E402,F401
+from tc_mc_chi_d_narrow import tc_mc_chi_d_narrow  # noqa: E402,F401
+from tc_mc_chi_e_write_read import tc_mc_chi_e_write_read  # noqa: E402,F401
+from tc_mc_chi_e_write_zero import tc_mc_chi_e_write_zero  # noqa: E402,F401
+from tc_mc_chi_e_read_sep import tc_mc_chi_e_read_sep  # noqa: E402,F401
+from tc_mc_equiv_chi import tc_mc_equiv_chi_d  # noqa: E402,F401
+from tc_mc_equiv_chi import tc_mc_equiv_chi_e  # noqa: E402,F401
+from tc_mc_mixed_concurrent import tc_mc_mixed_concurrent  # noqa: E402,F401
 
 
 _CORE_TESTS = [
@@ -205,37 +198,36 @@ AXI4_AGENT_CFG_T = Axi4CfgT(
     RUSER_WIDTH_P=CFG_T.RUSER_WIDTH_P,
 )
 
-if _HAVE_CHI:
-  CHI_D_CFG = ChiCfg(
-      issue=Issue.D,
-      node_id_width=11,
-      addr_width=VIP_DRAM_CFG_DEFAULT.ADDR_WIDTH_P,
-      data_bytes=VIP_DRAM_CFG_DEFAULT.ROW_BYTES_P)
-  MC_CHI_D_CFG_T = VipMcChiCfgT(
-      issue=VipMcChiIssue.D,
-      NODE_ID_WIDTH_P=11,
-      ADDR_WIDTH_P=VIP_DRAM_CFG_DEFAULT.ADDR_WIDTH_P,
-      DATA_BYTES_P=VIP_DRAM_CFG_DEFAULT.ROW_BYTES_P)
-  CHI_E_CFG = ChiCfg(
-      issue=Issue.E,
-      node_id_width=11,
-      addr_width=VIP_DRAM_CFG_DEFAULT.ADDR_WIDTH_P,
-      data_bytes=VIP_DRAM_CFG_DEFAULT.ROW_BYTES_P)
-  MC_CHI_E_CFG_T = VipMcChiCfgT(
-      issue=VipMcChiIssue.E,
-      NODE_ID_WIDTH_P=11,
-      ADDR_WIDTH_P=VIP_DRAM_CFG_DEFAULT.ADDR_WIDTH_P,
-      DATA_BYTES_P=VIP_DRAM_CFG_DEFAULT.ROW_BYTES_P)
-  CHI_N32_CFG = ChiCfg(
-      issue=Issue.D,
-      node_id_width=11,
-      addr_width=VIP_DRAM_CFG_DEFAULT.ADDR_WIDTH_P,
-      data_bytes=VIP_DRAM_CFG_DEFAULT.ROW_BYTES_P // 2)
-  MC_CHI_N32_CFG_T = VipMcChiCfgT(
-      issue=VipMcChiIssue.D,
-      NODE_ID_WIDTH_P=11,
-      ADDR_WIDTH_P=VIP_DRAM_CFG_DEFAULT.ADDR_WIDTH_P,
-      DATA_BYTES_P=VIP_DRAM_CFG_DEFAULT.ROW_BYTES_P // 2)
+CHI_D_CFG = ChiCfg(
+    issue=Issue.D,
+    node_id_width=11,
+    addr_width=VIP_DRAM_CFG_DEFAULT.ADDR_WIDTH_P,
+    data_bytes=VIP_DRAM_CFG_DEFAULT.ROW_BYTES_P)
+MC_CHI_D_CFG_T = VipMcChiCfgT(
+    issue=VipMcChiIssue.D,
+    NODE_ID_WIDTH_P=11,
+    ADDR_WIDTH_P=VIP_DRAM_CFG_DEFAULT.ADDR_WIDTH_P,
+    DATA_BYTES_P=VIP_DRAM_CFG_DEFAULT.ROW_BYTES_P)
+CHI_E_CFG = ChiCfg(
+    issue=Issue.E,
+    node_id_width=11,
+    addr_width=VIP_DRAM_CFG_DEFAULT.ADDR_WIDTH_P,
+    data_bytes=VIP_DRAM_CFG_DEFAULT.ROW_BYTES_P)
+MC_CHI_E_CFG_T = VipMcChiCfgT(
+    issue=VipMcChiIssue.E,
+    NODE_ID_WIDTH_P=11,
+    ADDR_WIDTH_P=VIP_DRAM_CFG_DEFAULT.ADDR_WIDTH_P,
+    DATA_BYTES_P=VIP_DRAM_CFG_DEFAULT.ROW_BYTES_P)
+CHI_N32_CFG = ChiCfg(
+    issue=Issue.D,
+    node_id_width=11,
+    addr_width=VIP_DRAM_CFG_DEFAULT.ADDR_WIDTH_P,
+    data_bytes=VIP_DRAM_CFG_DEFAULT.ROW_BYTES_P // 2)
+MC_CHI_N32_CFG_T = VipMcChiCfgT(
+    issue=VipMcChiIssue.D,
+    NODE_ID_WIDTH_P=11,
+    ADDR_WIDTH_P=VIP_DRAM_CFG_DEFAULT.ADDR_WIDTH_P,
+    DATA_BYTES_P=VIP_DRAM_CFG_DEFAULT.ROW_BYTES_P // 2)
 
 
 _STATUS_SCALARS = (
@@ -342,11 +334,6 @@ async def _run_uvm(dut, test_name, prefixes=None):
 
 async def _run_chi_uvm(dut, test_name, chi_cfg, mc_chi_cfg_t,
                        rni_prefix="rni_", mc_prefix="mcchi_"):
-  if not _HAVE_CHI:
-    raise RuntimeError(
-        "vip_chi_agent Python dependency not available at "
-        "submodules/vip_chi_agent/py.")
-
   ConfigDB().clear()
   cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
   rni_vif = ChiBus(dut, chi_cfg, Role.RNI, prefix=rni_prefix)
@@ -368,11 +355,6 @@ async def _run_chi_uvm(dut, test_name, chi_cfg, mc_chi_cfg_t,
 
 
 async def _run_mixed_uvm(dut, test_name):
-  if not _HAVE_CHI:
-    raise RuntimeError(
-        "vip_chi_agent Python dependency not available at "
-        "submodules/vip_chi_agent/py.")
-
   ConfigDB().clear()
   cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
   axi4_vif = Axi4Bus(dut, prefix="p0_")
@@ -594,92 +576,90 @@ async def tc_mc_ecc_slverr(dut):
   await _run_uvm(dut, "tc_mc_ecc_slverr")
 
 
-if _HAVE_CHI:
+@cocotb.test(timeout_time=5, timeout_unit="ms")
+async def tc_mc_chi_d_read(dut):
+  await _run_chi_uvm(
+      dut, "tc_mc_chi_d_read", CHI_D_CFG, MC_CHI_D_CFG_T,
+      rni_prefix="rni_", mc_prefix="mcchi_")
 
-  @cocotb.test(timeout_time=5, timeout_unit="ms")
-  async def tc_mc_chi_d_read(dut):
-    await _run_chi_uvm(
-        dut, "tc_mc_chi_d_read", CHI_D_CFG, MC_CHI_D_CFG_T,
-        rni_prefix="rni_", mc_prefix="mcchi_")
+@cocotb.test(timeout_time=5, timeout_unit="ms")
+async def tc_mc_chi_d_write_read(dut):
+  await _run_chi_uvm(
+      dut, "tc_mc_chi_d_write_read", CHI_D_CFG, MC_CHI_D_CFG_T,
+      rni_prefix="rni_", mc_prefix="mcchi_")
 
-  @cocotb.test(timeout_time=5, timeout_unit="ms")
-  async def tc_mc_chi_d_write_read(dut):
-    await _run_chi_uvm(
-        dut, "tc_mc_chi_d_write_read", CHI_D_CFG, MC_CHI_D_CFG_T,
-        rni_prefix="rni_", mc_prefix="mcchi_")
+@cocotb.test(timeout_time=5, timeout_unit="ms")
+async def tc_mc_chi_d_write_ptl(dut):
+  await _run_chi_uvm(
+      dut, "tc_mc_chi_d_write_ptl", CHI_D_CFG, MC_CHI_D_CFG_T,
+      rni_prefix="rni_", mc_prefix="mcchi_")
 
-  @cocotb.test(timeout_time=5, timeout_unit="ms")
-  async def tc_mc_chi_d_write_ptl(dut):
-    await _run_chi_uvm(
-        dut, "tc_mc_chi_d_write_ptl", CHI_D_CFG, MC_CHI_D_CFG_T,
-        rni_prefix="rni_", mc_prefix="mcchi_")
+@cocotb.test(timeout_time=5, timeout_unit="ms")
+async def tc_mc_chi_d_decerr(dut):
+  await _run_chi_uvm(
+      dut, "tc_mc_chi_d_decerr", CHI_D_CFG, MC_CHI_D_CFG_T,
+      rni_prefix="rni_", mc_prefix="mcchi_")
 
-  @cocotb.test(timeout_time=5, timeout_unit="ms")
-  async def tc_mc_chi_d_decerr(dut):
-    await _run_chi_uvm(
-        dut, "tc_mc_chi_d_decerr", CHI_D_CFG, MC_CHI_D_CFG_T,
-        rni_prefix="rni_", mc_prefix="mcchi_")
+@cocotb.test(timeout_time=5, timeout_unit="ms")
+async def tc_mc_chi_d_combined_write(dut):
+  await _run_chi_uvm(
+      dut, "tc_mc_chi_d_combined_write", CHI_D_CFG, MC_CHI_D_CFG_T,
+      rni_prefix="rni_", mc_prefix="mcchi_")
 
-  @cocotb.test(timeout_time=5, timeout_unit="ms")
-  async def tc_mc_chi_d_combined_write(dut):
-    await _run_chi_uvm(
-        dut, "tc_mc_chi_d_combined_write", CHI_D_CFG, MC_CHI_D_CFG_T,
-        rni_prefix="rni_", mc_prefix="mcchi_")
+@cocotb.test(timeout_time=5, timeout_unit="ms")
+async def tc_mc_chi_d_persist(dut):
+  await _run_chi_uvm(
+      dut, "tc_mc_chi_d_persist", CHI_D_CFG, MC_CHI_D_CFG_T,
+      rni_prefix="rni_", mc_prefix="mcchi_")
 
-  @cocotb.test(timeout_time=5, timeout_unit="ms")
-  async def tc_mc_chi_d_persist(dut):
-    await _run_chi_uvm(
-        dut, "tc_mc_chi_d_persist", CHI_D_CFG, MC_CHI_D_CFG_T,
-        rni_prefix="rni_", mc_prefix="mcchi_")
+@cocotb.test(timeout_time=5, timeout_unit="ms")
+async def tc_mc_chi_d_unsupported(dut):
+  await _run_chi_uvm(
+      dut, "tc_mc_chi_d_unsupported", CHI_D_CFG, MC_CHI_D_CFG_T,
+      rni_prefix="rni_", mc_prefix="mcchi_")
 
-  @cocotb.test(timeout_time=5, timeout_unit="ms")
-  async def tc_mc_chi_d_unsupported(dut):
-    await _run_chi_uvm(
-        dut, "tc_mc_chi_d_unsupported", CHI_D_CFG, MC_CHI_D_CFG_T,
-        rni_prefix="rni_", mc_prefix="mcchi_")
+@cocotb.test(timeout_time=5, timeout_unit="ms")
+async def tc_mc_chi_d_reject(dut):
+  await _run_chi_uvm(
+      dut, "tc_mc_chi_d_reject", CHI_D_CFG, MC_CHI_D_CFG_T,
+      rni_prefix="rni_", mc_prefix="mcchi_")
 
-  @cocotb.test(timeout_time=5, timeout_unit="ms")
-  async def tc_mc_chi_d_reject(dut):
-    await _run_chi_uvm(
-        dut, "tc_mc_chi_d_reject", CHI_D_CFG, MC_CHI_D_CFG_T,
-        rni_prefix="rni_", mc_prefix="mcchi_")
+@cocotb.test(timeout_time=5, timeout_unit="ms")
+async def tc_mc_chi_d_narrow(dut):
+  await _run_chi_uvm(
+      dut, "tc_mc_chi_d_narrow", CHI_N32_CFG, MC_CHI_N32_CFG_T,
+      rni_prefix="rni_n32_", mc_prefix="mcchi_n32_")
 
-  @cocotb.test(timeout_time=5, timeout_unit="ms")
-  async def tc_mc_chi_d_narrow(dut):
-    await _run_chi_uvm(
-        dut, "tc_mc_chi_d_narrow", CHI_N32_CFG, MC_CHI_N32_CFG_T,
-        rni_prefix="rni_n32_", mc_prefix="mcchi_n32_")
+@cocotb.test(timeout_time=5, timeout_unit="ms")
+async def tc_mc_chi_e_write_read(dut):
+  await _run_chi_uvm(
+      dut, "tc_mc_chi_e_write_read", CHI_E_CFG, MC_CHI_E_CFG_T,
+      rni_prefix="rni_e_", mc_prefix="mcchi_e_")
 
-  @cocotb.test(timeout_time=5, timeout_unit="ms")
-  async def tc_mc_chi_e_write_read(dut):
-    await _run_chi_uvm(
-        dut, "tc_mc_chi_e_write_read", CHI_E_CFG, MC_CHI_E_CFG_T,
-        rni_prefix="rni_e_", mc_prefix="mcchi_e_")
+@cocotb.test(timeout_time=5, timeout_unit="ms")
+async def tc_mc_chi_e_write_zero(dut):
+  await _run_chi_uvm(
+      dut, "tc_mc_chi_e_write_zero", CHI_E_CFG, MC_CHI_E_CFG_T,
+      rni_prefix="rni_e_", mc_prefix="mcchi_e_")
 
-  @cocotb.test(timeout_time=5, timeout_unit="ms")
-  async def tc_mc_chi_e_write_zero(dut):
-    await _run_chi_uvm(
-        dut, "tc_mc_chi_e_write_zero", CHI_E_CFG, MC_CHI_E_CFG_T,
-        rni_prefix="rni_e_", mc_prefix="mcchi_e_")
+@cocotb.test(timeout_time=5, timeout_unit="ms")
+async def tc_mc_chi_e_read_sep(dut):
+  await _run_chi_uvm(
+      dut, "tc_mc_chi_e_read_sep", CHI_E_CFG, MC_CHI_E_CFG_T,
+      rni_prefix="rni_e_", mc_prefix="mcchi_e_")
 
-  @cocotb.test(timeout_time=5, timeout_unit="ms")
-  async def tc_mc_chi_e_read_sep(dut):
-    await _run_chi_uvm(
-        dut, "tc_mc_chi_e_read_sep", CHI_E_CFG, MC_CHI_E_CFG_T,
-        rni_prefix="rni_e_", mc_prefix="mcchi_e_")
+@cocotb.test(timeout_time=5, timeout_unit="ms")
+async def tc_mc_equiv_chi_d(dut):
+  await _run_chi_uvm(
+      dut, "tc_mc_equiv_chi_d", CHI_D_CFG, MC_CHI_D_CFG_T,
+      rni_prefix="rni_", mc_prefix="mcchi_")
 
-  @cocotb.test(timeout_time=5, timeout_unit="ms")
-  async def tc_mc_equiv_chi_d(dut):
-    await _run_chi_uvm(
-        dut, "tc_mc_equiv_chi_d", CHI_D_CFG, MC_CHI_D_CFG_T,
-        rni_prefix="rni_", mc_prefix="mcchi_")
+@cocotb.test(timeout_time=5, timeout_unit="ms")
+async def tc_mc_equiv_chi_e(dut):
+  await _run_chi_uvm(
+      dut, "tc_mc_equiv_chi_e", CHI_E_CFG, MC_CHI_E_CFG_T,
+      rni_prefix="rni_e_", mc_prefix="mcchi_e_")
 
-  @cocotb.test(timeout_time=5, timeout_unit="ms")
-  async def tc_mc_equiv_chi_e(dut):
-    await _run_chi_uvm(
-        dut, "tc_mc_equiv_chi_e", CHI_E_CFG, MC_CHI_E_CFG_T,
-        rni_prefix="rni_e_", mc_prefix="mcchi_e_")
-
-  @cocotb.test(timeout_time=5, timeout_unit="ms")
-  async def tc_mc_mixed_concurrent(dut):
-    await _run_mixed_uvm(dut, "tc_mc_mixed_concurrent")
+@cocotb.test(timeout_time=5, timeout_unit="ms")
+async def tc_mc_mixed_concurrent(dut):
+  await _run_mixed_uvm(dut, "tc_mc_mixed_concurrent")
