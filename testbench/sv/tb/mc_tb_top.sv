@@ -382,7 +382,7 @@ module mc_tb_top;
       "vif",
       rni_vif_n32);
 
-    $timeformat(-9, 3, " ns", 11);
+    $timeformat(-9, 3, "", 11);
     run_test();
     $stop();
   end
