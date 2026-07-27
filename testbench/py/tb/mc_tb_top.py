@@ -32,7 +32,7 @@ import sys
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge
+from cocotb.triggers import ReadWrite, RisingEdge
 from pyuvm import ConfigDB, uvm_root
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -238,6 +238,79 @@ if _HAVE_CHI:
       DATA_BYTES_P=VIP_DRAM_CFG_DEFAULT.ROW_BYTES_P // 2)
 
 
+_STATUS_SCALARS = (
+    "rst_active",
+    "cmd_queue_depth",
+    "cmd_queue_peak_depth",
+    "inflight_to_device",
+    "rsp_buf_used",
+    "rsp_buf_full",
+    "device_issue_credit_avail",
+    "backend_stall_reason",
+    "refresh_count",
+    "issue_pulse",
+    "issue_port_id",
+    "issue_tag",
+    "issue_op",
+    "issue_qos_class",
+    "issue_pre_resolved",
+    "complete_pulse",
+    "complete_port_id",
+    "complete_tag",
+    "complete_op",
+    "complete_resp",
+    "complete_page",
+    "complete_pre_resolved",
+    "refresh_emit_pulse",
+    "refresh_emit_rank",
+    "local_reject_pulse",
+    "local_reject_port_id",
+    "local_reject_op",
+    "local_reject_reason",
+)
+
+_STATUS_ARRAYS = (
+    "rd_outstanding_count",
+    "wr_outstanding_count",
+    "aw_pending_depth",
+    "pending_b_depth",
+    "pending_r_depth",
+    "active_r_slots_used",
+    "w_data_buf_occupancy",
+    "aw_block_reason",
+    "ar_block_reason",
+    "w_block_reason",
+)
+
+
+def _status_int(value):
+  """Convert bools and enum-like status fields into HDL integer values."""
+  return int(value)
+
+
+def _drive_status_hdl(status_hdl, status_vif):
+  """Drive one snapshot of the Python status object into the HDL interface."""
+  for name in _STATUS_SCALARS:
+    getattr(status_hdl, name).value = _status_int(getattr(status_vif, name))
+  for name in _STATUS_ARRAYS:
+    values = getattr(status_vif, name)
+    hdl_array = getattr(status_hdl, name)
+    for port_id in range(2):
+      value = values[port_id] if port_id < len(values) else 0
+      hdl_array[port_id].value = _status_int(value)
+
+
+async def _mirror_status_to_hdl(dut, status_vif):
+  """Continuously mirror the Python status probe into wave-visible HDL."""
+  if not hasattr(dut, "status_if"):
+    return
+  _drive_status_hdl(dut.status_if, status_vif)
+  while True:
+    await RisingEdge(dut.clk)
+    await ReadWrite()
+    _drive_status_hdl(dut.status_if, status_vif)
+
+
 async def _run_uvm(dut, test_name, prefixes=None):
   prefixes = [""] if prefixes is None else list(prefixes)
   ConfigDB().clear()
@@ -253,6 +326,7 @@ async def _run_uvm(dut, test_name, prefixes=None):
   await RisingEdge(dut.clk)
 
   status_vif = vip_mc_status_if("status_vif", len(buses))
+  status_task = cocotb.start_soon(_mirror_status_to_hdl(dut, status_vif))
   ConfigDB().set(None, "*", "vif", buses[0])
   ConfigDB().set(None, "*", "cfg_t", CFG_T)
   ConfigDB().set(None, "*", "axi4_vifs", buses)
@@ -260,7 +334,10 @@ async def _run_uvm(dut, test_name, prefixes=None):
   ConfigDB().set(None, "*", "axi4_agent_cfg_ts", [AXI4_AGENT_CFG_T] * len(buses))
   ConfigDB().set(None, "*", "n_ports", len(buses))
   ConfigDB().set(None, "*", "status_vif", status_vif)
-  await uvm_root().run_test(test_name, keep_set={ConfigDB})
+  try:
+    await uvm_root().run_test(test_name, keep_set={ConfigDB})
+  finally:
+    status_task.cancel()
 
 
 async def _run_chi_uvm(dut, test_name, chi_cfg, mc_chi_cfg_t,

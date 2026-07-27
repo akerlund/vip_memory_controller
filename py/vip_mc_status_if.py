@@ -28,6 +28,14 @@
 from __future__ import annotations
 
 from vip_mc_status_snapshot import vip_mc_status_snapshot
+from vip_mc_types_pkg import (
+  VipMcStatusFeBlock,
+  VipMcStatusOp,
+  VipMcStatusPage,
+  VipMcStatusReject,
+  VipMcStatusRsp,
+  VipMcStatusStall,
+)
 
 
 class vip_mc_status_if:
@@ -85,3 +93,85 @@ class vip_mc_status_if:
     self.aw_block_reason = list(snapshot.aw_block_reason)
     self.ar_block_reason = list(snapshot.ar_block_reason)
     self.w_block_reason = list(snapshot.w_block_reason)
+    self.decode_status_fields()
+
+  # ---------------------------------------------------------------------------
+  # Keep Python-side helpers aligned with vip_mc_status_if.sv wave decodes.
+  # ---------------------------------------------------------------------------
+  def decode_status_fields(self) -> None:
+    self.issue_op_rd = self.issue_op == VipMcStatusOp.RD
+    self.issue_op_wr = self.issue_op == VipMcStatusOp.WR
+    self.issue_op_ref = self.issue_op == VipMcStatusOp.REF
+
+    self.complete_op_rd = self.complete_op == VipMcStatusOp.RD
+    self.complete_op_wr = self.complete_op == VipMcStatusOp.WR
+    self.complete_op_ref = self.complete_op == VipMcStatusOp.REF
+
+    self.complete_resp_okay = self.complete_resp == VipMcStatusRsp.OKAY
+    self.complete_resp_exokay = self.complete_resp == VipMcStatusRsp.EXOKAY
+    self.complete_resp_slverr = self.complete_resp == VipMcStatusRsp.SLVERR
+    self.complete_resp_decerr = self.complete_resp == VipMcStatusRsp.DECERR
+
+    self.complete_page_unknown = self.complete_page == VipMcStatusPage.UNKNOWN
+    self.complete_page_hit = self.complete_page == VipMcStatusPage.HIT
+    self.complete_page_miss = self.complete_page == VipMcStatusPage.MISS
+    self.complete_page_empty = self.complete_page == VipMcStatusPage.EMPTY
+
+    self.backend_stall_none = (
+        self.backend_stall_reason == VipMcStatusStall.NONE)
+    self.backend_stall_in_reset = (
+        self.backend_stall_reason == VipMcStatusStall.IN_RESET)
+    self.backend_stall_no_buffered_input = (
+        self.backend_stall_reason == VipMcStatusStall.NO_BUFFERED_INPUT)
+    self.backend_stall_cmd_queue_empty = (
+        self.backend_stall_reason == VipMcStatusStall.CMD_QUEUE_EMPTY)
+    self.backend_stall_same_stream_blocked = (
+        self.backend_stall_reason == VipMcStatusStall.SAME_STREAM_BLOCKED)
+    self.backend_stall_device_credit_full = (
+        self.backend_stall_reason == VipMcStatusStall.DEVICE_CREDIT_FULL)
+    self.backend_stall_rsp_buffer_full = (
+        self.backend_stall_reason == VipMcStatusStall.RSP_BUFFER_FULL)
+    self.backend_stall_ref_strict_priority = (
+        self.backend_stall_reason == VipMcStatusStall.REF_STRICT_PRIORITY)
+
+    self.local_reject_decerr_region = (
+        self.local_reject_reason == VipMcStatusReject.DECERR_REGION)
+    self.local_reject_decerr_4k = (
+        self.local_reject_reason == VipMcStatusReject.DECERR_4K)
+    self.local_reject_decerr_row_span = (
+        self.local_reject_reason == VipMcStatusReject.DECERR_ROW_SPAN)
+    self.local_reject_unsupported_axi_shape = (
+        self.local_reject_reason == VipMcStatusReject.UNSUPPORTED_AXI_SHAPE)
+    self.local_reject_exclusive_fail_local = (
+        self.local_reject_reason == VipMcStatusReject.EXCLUSIVE_FAIL_LOCAL)
+    self.local_reject_slverr_local = (
+        self.local_reject_reason == VipMcStatusReject.SLVERR_LOCAL)
+
+    self.aw_blocked = [
+        reason != VipMcStatusFeBlock.NONE for reason in self.aw_block_reason]
+    self.ar_blocked = [
+        reason != VipMcStatusFeBlock.NONE for reason in self.ar_block_reason]
+    self.w_blocked = [
+        reason != VipMcStatusFeBlock.NONE for reason in self.w_block_reason]
+
+    self.aw_blocked_rsp_buf_full = [
+        reason == VipMcStatusFeBlock.RSP_BUF_FULL
+        for reason in self.aw_block_reason]
+    self.ar_blocked_rsp_buf_full = [
+        reason == VipMcStatusFeBlock.RSP_BUF_FULL
+        for reason in self.ar_block_reason]
+    self.aw_blocked_outstanding_full = [
+        reason == VipMcStatusFeBlock.AW_OUTSTANDING_FULL
+        for reason in self.aw_block_reason]
+    self.ar_blocked_outstanding_full = [
+        reason == VipMcStatusFeBlock.AR_OUTSTANDING_FULL
+        for reason in self.ar_block_reason]
+    self.aw_blocked_pending_full = [
+        reason == VipMcStatusFeBlock.AW_PENDING_FULL
+        for reason in self.aw_block_reason]
+    self.w_blocked_wbuf_full = [
+        reason == VipMcStatusFeBlock.WBUF_FULL
+        for reason in self.w_block_reason]
+    self.w_blocked_no_write_in_flight = [
+        reason == VipMcStatusFeBlock.NO_WRITE_IN_FLIGHT
+        for reason in self.w_block_reason]

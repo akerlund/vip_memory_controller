@@ -10,6 +10,9 @@ description: "vip_mc pyUVM/cocotb Verilator regression"
 filesets:
   tb:
     files:
+      - ../../sv/vip_mc_axi4_types_pkg.sv
+      - ../../sv/vip_mc_types_pkg.sv
+      - ../../sv/vip_mc_status_if.sv
       - tb/mc_hdl_top.sv
     file_type: systemVerilogSource
 
@@ -29,6 +32,7 @@ targets:
       tool: verilator
       verilator_options:
         - -Wno-fatal
+        - -Wno-TIMESCALEMOD
         - --public-flat-rw
 
   sim:
@@ -39,4 +43,5 @@ targets:
       mode: cc
       verilator_options:
         - -Wno-fatal
+        - -Wno-TIMESCALEMOD
         - --public-flat-rw

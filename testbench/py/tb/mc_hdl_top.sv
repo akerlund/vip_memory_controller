@@ -41,9 +41,18 @@ module mc_hdl_top #(
   localparam int CHI_RSP_W = 96;
   localparam int CHI_DAT_W = 768;
   localparam int CHI_SNP_W = 160;
+  localparam int STATUS_N_PORTS = 2;
 
   logic clk;
   logic rst_n;
+
+  // Wave-only mirror of the Python vip_mc_status_if object.
+  vip_mc_status_if #(
+    .N_PORTS(STATUS_N_PORTS)
+  ) status_if (
+    .clk(clk),
+    .rst_n(rst_n)
+  );
 
   // Verilated with --public-flat-rw: cocotb drives the manager side and the
   // Python vip_mc AXI4 front-end drives the controller side.
