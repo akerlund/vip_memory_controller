@@ -80,7 +80,6 @@ class tc_mc_axi4_aw_backpressure extends mc_base_test;
     wr_seq.set_axsize(this.get_full_width_axi_size());
     wr_seq.set_axburst(VIP_AXI4_BURST_INCR_C);
     wr_seq.set_axqos(4'h2);
-    wr_seq.set_requests(2);
     wr_seq.set_get_wr_response(1'b0);
     wr_seq.set_wdata_type(VIP_AXI4_DATA_CUSTOM_E);
     wr_seq.set_wstrb_type(VIP_AXI4_STRB_CUSTOM_E);
