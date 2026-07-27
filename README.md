@@ -41,7 +41,6 @@ surface.
 | --- | --- | --- |
 | `README.md` | User-facing overview | Describes the delivered slice, configuration knobs, constraints, and the basic build/smoke flow for `vip_mc`. |
 | `docs/PRIMER.md` | Educational primer | Explains memory-controller responsibilities, host-to-DRAM translation, scheduling, timing, refresh, and the embedded MC-to-DRAM request examples. |
-| `docs/PORTING_PLAN.md` | pyUVM/cocotb plan | Breaks down the planned Python port of the VIP and example testbench, including dependency reuse and regression gates. |
 | `docs/MC_DRAM_REQUEST_EXAMPLES.md` | Compatibility pointer | Points existing links at the embedded walkthrough in `docs/PRIMER.md`. |
 | `docs/IMPLEMENTATION_PLAN.md` | Design reference | Captures the intended architecture, contracts, tests, and file-level decomposition for the controller VIP. |
 | `docs/FURTHER_WORK.md` | Follow-up list | Tracks current low-priority review follow-ups that are not regressions in the delivered slice. |
