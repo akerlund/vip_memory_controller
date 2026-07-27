@@ -24,9 +24,11 @@ Current delivered slice:
   `first/last_beat_ready_time`, B driven at `last_beat_ready_time`
 - `backend.issued_port` grant-order tap + an example latency scoreboard
   (`mc_scoreboard`) that checks observed B/R timing against `dram.predict()`
-- real `vip_dram` end-to-end example harness in `testbench/sv` (29 AXI4 tests
-  plus a 9-test CHI slice — 6 CHI-D directed + a 3-test CHI-E D/E matrix — all in
-  one build)
+- real `vip_dram` end-to-end example harness in `testbench/sv` (54 testcases in
+  one build: 12 CHI — 8 CHI-D directed, a 3-test CHI-E D/E matrix, and a 32 B-DAT
+  narrow case — plus AXI4, scheduling, refresh, ECC, mixed and equivalence
+  coverage), mirrored by the pyUVM/cocotb port in `testbench/py`; see
+  [testbench/TEST_CASES.md](testbench/TEST_CASES.md)
 
 ## File map
 

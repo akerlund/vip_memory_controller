@@ -2,8 +2,8 @@
 
 This directory is the pyUVM/cocotb port of the SystemVerilog `vip_mc` VIP.
 
-Current status: the simulator-independent controller core and the first AXI4
-end-to-end slice are ported:
+Current status: the port is complete. Everything below is implemented and
+covered by the regression:
 
 - owned AXI4 constants and width config types
 - shared MC enums, port descriptors, address regions, and status snapshot
@@ -20,12 +20,14 @@ end-to-end slice are ported:
 - AXI4 front-end driver for `INCR`, `FIXED`, and `WRAP` bursts,
   narrow/unaligned byte mapping, DECERR classification, exclusive reservations,
   B/R response queues, and bus-edge response pacing
+- CHI SN front-end driver for issue D and issue E, including narrow 32 B DAT
 - compatibility wrapper for the shared `vip_axi4_agent` bus API
-- top-level `vip_mc` component that builds one or more AXI4 front-ends over one
-  shared backend and `vip_dram`
+- top-level `vip_mc` component that builds one or more AXI4 or CHI front-ends
+  over one shared backend and `vip_dram`
 
-The CHI front-end and the broad AXI4 regression are still pending. The immediate
-regression for this slice is:
+The Verilator regression runs 55 testcases — the 54 in
+[`testbench/TEST_CASES.md`](../testbench/TEST_CASES.md) plus the Python-only
+`tc_mc_core_slice` unit slice. Run it with:
 
 ```bash
 PYTHONPATH=py:submodules/vip_axi4_agent/py:submodules/vip_dram/py:submodules/vip_memory/py:submodules/vip_gauss/py \
