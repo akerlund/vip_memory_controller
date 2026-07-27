@@ -42,7 +42,7 @@ filesets:
       - sv/vip_mc_chi_connect.sv:  {is_include_file: true}
     file_type: systemVerilogSource
     depend:
-      - "akerlund::vip_memory:2.0.0"
+      - "akerlund::vip_memory:2.0.1"
       - "akerlund::vip_dram:1.0.0"
 
 targets:

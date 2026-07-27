@@ -84,7 +84,7 @@ filesets:
     depend:
       - "akerlund::vip_mc:1.0.0"
       - "akerlund::vip_chi_agent:1.0.0"
-      - "akerlund::vip_axi4_agent:1.1.0"
+      - "akerlund::vip_axi4_agent:1.2.0"
       - "akerlund::vip_clk_rst_agent:0"
       - "akerlund::vip_gauss:1.0.0"
       - "akerlund::vip_report_server:0"
