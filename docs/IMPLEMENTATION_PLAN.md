@@ -2,7 +2,7 @@
 
 A behavioral DDR memory-controller VIP that **replaces MIG** in
 densemem-style testbenches. It exposes AXI4 upward to the manager VIP
-and the neutral TLM contract of [`vip_dram`](../vip_dram/IMPLEMENTATION_PLAN.md)
+and the neutral TLM contract of [`vip_dram`](../submodules/vip_dram/docs/IMPLEMENTATION_PLAN.md)
 downward to the device model.
 
 ```text
@@ -24,7 +24,7 @@ device model deliberately does not:
   `vip_dram_config.addr_map` at `start_of_simulation_phase`.
 
 Naming: this VIP is `vip_mc`, distinct from the existing
-[`vip_mig_mc`](../vip_mig_mc/) sidecar. `vip_mig_mc` exists solely to
+`vip_mig_mc` sidecar. `vip_mig_mc` exists solely to
 bypass the missing Xilinx MIG backdoor (it shadows RDATA while real
 MIG IP drives AXI4); `vip_mc` is the opposite — a fully behavioral
 controller that replaces MIG entirely.
@@ -111,7 +111,7 @@ Stimulus reuse is optional and fully decoupled: a small **connector module**
 `vip_mc_axi4_connect` cross-wires `vip_mc_axi4_if` to a stock `vip_axi4_if`
 (MANAGER role) so the existing `vip_axi4_agent` can drive traffic in the
 example TB — exactly the two-instance cross-wiring pattern used in
-[`axi4_tb_top.sv`](../examples/vip_axi4_agent/tb/axi4_tb_top.sv). The
+[`axi4_tb_top.sv`](../submodules/vip_axi4_agent/testbench/sv/tb/axi4_tb_top.sv). The
 connector is the **only** place `vip_axi4_if` is named, it is a Verilog
 module (not part of `vip_mc_pkg`), and it is compiled only on the
 stock-manager integration path. `vip_mc_pkg` itself compiles and runs
@@ -131,7 +131,7 @@ driver needs neither the connector nor the AXI4 VIP.
 
 ### CHI planning decisions
 
-> **The CHI front-end builds on the `vip_chi` agent** ([`../vip_chi/`](../vip_chi/)),
+> **The CHI front-end builds on the `vip_chi` agent** ([`submodules/vip_chi_agent/`](../submodules/vip_chi_agent/)),
 > which supplies a CHI-D/E `vip_chi_types_pkg` (issue enum, `vip_chi_cfg_t`, the
 > flit structs, and the `ReadNoSnp*`/`WriteNoSnp*` opcode tables), a role-gated
 > `vip_chi_if`, an **SN-F memory-target** driver (`vip_chi_driver_snf`, over
@@ -238,7 +238,7 @@ In scope:
 
 Out of scope (lives elsewhere):
 
-- DRAM device timing — lives in [`vip_dram`](../vip_dram/IMPLEMENTATION_PLAN.md)
+- DRAM device timing — lives in [`vip_dram`](../submodules/vip_dram/docs/IMPLEMENTATION_PLAN.md)
   (`tRCD`, `tCL`, `tWL`, `tRTP`, `tFAW`, `tRFC`, …).
 - Bank-state FSM / page policy — lives in `vip_dram`.
 - AXI4 stimulus generation, monitoring, coverage, sequence library —
@@ -2742,7 +2742,7 @@ standard `vip_axi4_agent` in `MANAGER` role driving its **own**
 `vip_axi4_if #(.., MANAGER)` instance; `vip_mc` owns a **separate**
 `vip_mc_axi4_if` instance. The `vip_mc_axi4_connect` module cross-wires the
 two (all five channels, explicit `assign`s — the
-[`axi4_tb_top.sv`](../examples/vip_axi4_agent/tb/axi4_tb_top.sv) pattern).
+[`axi4_tb_top.sv`](../submodules/vip_axi4_agent/testbench/sv/tb/axi4_tb_top.sv) pattern).
 This is **two interface instances, bridged** — never one shared role-gated
 interface (B1). Each agent fetches its own vif handle from the config DB (the
 manager gets `man_vif`; `vip_mc` gets `mc_vif`). The TB owns the `vip_dram`
