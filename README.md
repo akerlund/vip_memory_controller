@@ -1,4 +1,4 @@
-# vip_mc
+# VIP Memory Controller Agent
 
 Behavioral memory-controller VIP over `vip_dram`. It exposes owned host-facing
 types/interfaces and UVM front-end logic — an AXI4 controller-side front-end and
@@ -43,7 +43,6 @@ surface.
 | --- | --- | --- |
 | `README.md` | User-facing overview | Describes the delivered slice, configuration knobs, constraints, and the basic build/smoke flow for `vip_mc`. |
 | `docs/PRIMER.md` | Educational primer | Explains memory-controller responsibilities, host-to-DRAM translation, scheduling, timing, refresh, and the embedded MC-to-DRAM request examples. |
-| `docs/MC_DRAM_REQUEST_EXAMPLES.md` | Compatibility pointer | Points existing links at the embedded walkthrough in `docs/PRIMER.md`. |
 | `docs/IMPLEMENTATION_PLAN.md` | Design reference | Captures the intended architecture, contracts, tests, and file-level decomposition for the controller VIP. |
 | `docs/FURTHER_WORK.md` | Follow-up list | Tracks current low-priority review follow-ups that are not regressions in the delivered slice. |
 | `py/` | Python port source | Contains the pyUVM/cocotb port of the controller core, backend lifecycle, AXI4 and CHI front-ends, and top-level `vip_mc` component over `vip_dram`. |
