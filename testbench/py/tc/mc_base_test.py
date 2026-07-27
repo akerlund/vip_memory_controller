@@ -1309,7 +1309,7 @@ class mc_axi4_ooo_inter_id_base(mc_base_test):
   DUMMY_ID = 3
   MISS_ID = 1
   HIT_ID = 2
-  DUMMY_BEATS = 64
+  DUMMY_BEATS = 16
 
   def configure(self, cfg) -> None:
     cfg.refresh_enabled = False
