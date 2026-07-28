@@ -84,8 +84,9 @@ class tc_mc_axi4_soak extends mc_base_test;
   protected longint unsigned seed;
 
   // Per-port completion tallies, reported at the end.
-  protected int unsigned writes_done [N_PORTS_C];
-  protected int unsigned reads_done  [N_PORTS_C];
+  protected int unsigned writes_done  [N_PORTS_C];
+  protected int unsigned reads_done   [N_PORTS_C];
+  protected int unsigned rejects_done [N_PORTS_C];
 
   // ---------------------------------------------------------------------------
   // Constructor.
@@ -151,8 +152,9 @@ class tc_mc_axi4_soak extends mc_base_test;
 
     for (int p = 0; p < N_PORTS_C; p++) begin
       this.wait_for_reset_release_on_port(p);
-      this.writes_done[p] = 0;
-      this.reads_done[p]  = 0;
+      this.writes_done[p]  = 0;
+      this.reads_done[p]   = 0;
+      this.rejects_done[p] = 0;
     end
 
     // Ports run concurrently; within a port the program is replayed in order so
@@ -173,12 +175,80 @@ class tc_mc_axi4_soak extends mc_base_test;
     this.final_backdoor_sweep();
 
     `uvm_info(get_name(), $sformatf(
-      "Soak complete: port0 %0d writes / %0d reads, port1 %0d writes / %0d reads",
-      this.writes_done[0], this.reads_done[0],
-      this.writes_done[1], this.reads_done[1]), UVM_LOW)
+      {"Soak complete: port0 %0d writes / %0d reads / %0d decerr, ",
+       "port1 %0d writes / %0d reads / %0d decerr"},
+      this.writes_done[0], this.reads_done[0], this.rejects_done[0],
+      this.writes_done[1], this.reads_done[1], this.rejects_done[1]), UVM_LOW)
 
     this.report_telemetry("soak");
   endtask
+
+  // ---------------------------------------------------------------------------
+  // Lowest and highest byte address a transaction covers.
+  //
+  // Deliberately an independent restatement of the front-end's own span math
+  // rather than a call into it: this is what the DECERR prediction below is
+  // checked against, and predicting with the code under test would make the
+  // check vacuous. It is only this short because mc_soak_gen size-aligns every
+  // start address, so the AXI4 A3.4.3 first-beat clipping term is always zero -
+  // asserted rather than assumed.
+  // ---------------------------------------------------------------------------
+  protected function void soak_span(
+    input  mc_soak_txn_t     t,
+    output longint unsigned  lo_addr,
+    output longint unsigned  hi_addr
+  );
+    longint unsigned total;
+
+    if ((t.addr % t.size_bytes) != 0) begin
+      `uvm_fatal(get_name(), $sformatf(
+        {"soak generator produced an unaligned start 0x%0h for a %0d B ",
+         "transfer; soak_span's simplified math no longer holds"},
+        t.addr, t.size_bytes))
+    end
+
+    total = t.beats * t.size_bytes;
+
+    case (t.burst)
+      VIP_MC_AXI4_BURST_FIXED_C: begin
+        lo_addr = t.addr;
+        hi_addr = t.addr + t.size_bytes - 1;
+      end
+      VIP_MC_AXI4_BURST_WRAP_C: begin
+        lo_addr = t.addr & ~(total - 1);
+        hi_addr = lo_addr + total - 1;
+      end
+      default: begin
+        lo_addr = t.addr;
+        hi_addr = t.addr + total - 1;
+      end
+    endcase
+  endfunction
+
+  // ---------------------------------------------------------------------------
+  // OKAY, or DECERR when the transaction lands in a configured DECERR window.
+  //
+  // The windows live in cfg (mc_tb_env installs 'h1000-'h1FFF for every AXI4
+  // test), so the soak can predict the rejection instead of tripping over it.
+  // Before this the generator drew across the whole device with no knowledge of
+  // the window and a rare seed produced a legal-looking access inside it - the
+  // controller correctly returned DECERR and the soak reported a failure.
+  // ---------------------------------------------------------------------------
+  protected function resp_t soak_expected_resp(input mc_soak_txn_t t);
+    longint unsigned lo_addr;
+    longint unsigned hi_addr;
+
+    this.soak_span(t, lo_addr, hi_addr);
+
+    foreach (this._tb_env.u_mc.cfg.axi4.decerr_addr_lo[i]) begin
+      if ((lo_addr <= this._tb_env.u_mc.cfg.axi4.decerr_addr_hi[i]) &&
+          (hi_addr >= this._tb_env.u_mc.cfg.axi4.decerr_addr_lo[i])) begin
+        return VIP_MC_AXI4_RESP_DECERR_C;
+      end
+    end
+
+    return VIP_MC_AXI4_RESP_OKAY_C;
+  endfunction
 
   // ---------------------------------------------------------------------------
   // Replay one port's slice of the program in order.
@@ -226,6 +296,7 @@ class tc_mc_axi4_soak extends mc_base_test;
     wdata_t       data_q [];
     wstrb_t       strb_q [];
     resp_t        bresp;
+    resp_t        want;
     buser_t       buser;
     byte unsigned beat_bytes [];
     bit           all_enabled [];
@@ -266,10 +337,19 @@ class tc_mc_axi4_soak extends mc_base_test;
       bresp,
       buser);
 
-    if (bresp !== VIP_MC_AXI4_RESP_OKAY_C) begin
+    want = this.soak_expected_resp(t);
+
+    if (bresp !== want) begin
       `uvm_error(get_name(), $sformatf(
-        "soak txn %0d port %0d: write at 0x%0h returned BRESP 0x%0h",
-        idx, port_id, t.addr, bresp))
+        "soak txn %0d port %0d: write at 0x%0h returned BRESP 0x%0h, expected 0x%0h",
+        idx, port_id, t.addr, bresp, want))
+      return;
+    end
+
+    // A rejected write never reaches storage, so it must not enter the model
+    // either - folding it would make every later read of those bytes disagree.
+    if (want === VIP_MC_AXI4_RESP_DECERR_C) begin
+      this.rejects_done[port_id]++;
       return;
     end
 
@@ -299,6 +379,7 @@ class tc_mc_axi4_soak extends mc_base_test;
   );
     rdata_t       data_q [];
     resp_t        rresp_q [];
+    resp_t        want;
     ruser_t       ruser_q [];
     byte unsigned got [];
     longint unsigned ba;
@@ -323,13 +404,23 @@ class tc_mc_axi4_soak extends mc_base_test;
       rresp_q,
       ruser_q);
 
+    want = this.soak_expected_resp(t);
+
     for (int b = 0; b < t.beats; b++) begin
-      if (rresp_q[b] !== VIP_MC_AXI4_RESP_OKAY_C) begin
+      if (rresp_q[b] !== want) begin
         `uvm_error(get_name(), $sformatf(
-          "soak txn %0d port %0d: read at 0x%0h beat %0d returned RRESP 0x%0h",
-          idx, port_id, t.addr, b, rresp_q[b]))
+          {"soak txn %0d port %0d: read at 0x%0h beat %0d returned RRESP 0x%0h, ",
+           "expected 0x%0h"},
+          idx, port_id, t.addr, b, rresp_q[b], want))
         return;
       end
+    end
+
+    // A rejected read returns no data to compare - the model holds nothing for
+    // those bytes, since the matching writes were rejected too.
+    if (want === VIP_MC_AXI4_RESP_DECERR_C) begin
+      this.rejects_done[port_id]++;
+      return;
     end
 
     // A FIXED read returns the same location every beat, so checking beat 0 is

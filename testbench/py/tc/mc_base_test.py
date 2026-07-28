@@ -56,6 +56,7 @@ from vip_mc_axi4_types_pkg import (
   VIP_MC_AXI4_BURST_FIXED_C,
   VIP_MC_AXI4_BURST_INCR_C,
   VIP_MC_AXI4_BURST_WRAP_C,
+  VIP_MC_AXI4_RESP_DECERR_C,
   VIP_MC_AXI4_RESP_EXOKAY_C,
   VIP_MC_AXI4_RESP_OKAY_C,
   VIP_MC_AXI4_RESP_SLVERR_C,
@@ -2708,6 +2709,7 @@ class mc_axi4_soak_base(mc_base_test):
 
     self.writes_done = [0] * self.n_ports
     self.reads_done = [0] * self.n_ports
+    self.rejects_done = [0] * self.n_ports
 
     # Ports run concurrently; within a port the program is replayed in order so
     # the golden model stays exact without predicting arbitration.
@@ -2724,8 +2726,46 @@ class mc_axi4_soak_base(mc_base_test):
     self.logger.info(
         f"Soak complete: "
         + ", ".join(f"port{p} {self.writes_done[p]} writes / "
-                    f"{self.reads_done[p]} reads"
+                    f"{self.reads_done[p]} reads / "
+                    f"{self.rejects_done[p]} decerr"
                     for p in range(self.n_ports)))
+
+  def _soak_span(self, t):
+    """Lowest and highest byte address a transaction covers.
+
+    Deliberately an independent restatement of the front-end's own span math
+    rather than a call into it: this is what the DECERR prediction below is
+    checked against, and predicting with the code under test would make the
+    check vacuous. It is only this short because mc_soak_gen size-aligns every
+    start address, so the AXI4 A3.4.3 first-beat clipping term is always zero -
+    asserted rather than assumed.
+    """
+    assert t.addr % t.size_bytes == 0, (
+        f"soak generator produced an unaligned start 0x{t.addr:x} for a "
+        f"{t.size_bytes} B transfer; _soak_span's simplified math no longer holds")
+    if t.burst == VIP_MC_AXI4_BURST_FIXED_C:
+      return t.addr, t.addr + t.size_bytes - 1
+    total = t.size_bytes * t.beats
+    if t.burst == VIP_MC_AXI4_BURST_WRAP_C:
+      base = t.addr & ~(total - 1)
+      return base, base + total - 1
+    return t.addr, t.addr + total - 1
+
+  def _soak_expected_resp(self, t):
+    """OKAY, or DECERR when the transaction lands in a configured DECERR window.
+
+    The windows live in cfg (mc_tb_env installs 0x1000-0x1fff for every AXI4
+    test), so the soak can predict the rejection instead of tripping over it.
+    Before this the generator drew across the whole device with no knowledge of
+    the window and a rare seed produced a legal-looking access inside it - the
+    controller correctly returned DECERR and the soak reported a failure.
+    """
+    lo_addr, hi_addr = self._soak_span(t)
+    for lo, hi in zip(self.env.mc.cfg.axi4.decerr_addr_lo,
+                      self.env.mc.cfg.axi4.decerr_addr_hi):
+      if lo_addr <= hi and hi_addr >= lo:
+        return VIP_MC_AXI4_RESP_DECERR_C
+    return VIP_MC_AXI4_RESP_OKAY_C
 
   async def _run_port(self, port_id, txns, model):
     """Replay one port's slice of the program in order."""
@@ -2775,10 +2815,17 @@ class mc_axi4_soak_base(mc_base_test):
         size=self.get_axi_size_for_bytes(t.size_bytes), burst=t.burst,
         awqos=t.qos, port_id=port_id)
 
-    if bresp != VIP_MC_AXI4_RESP_OKAY_C:
+    want = self._soak_expected_resp(t)
+    if bresp != want:
       raise AssertionError(
           f"soak txn {idx} port {port_id}: write at 0x{t.addr:x} "
-          f"returned BRESP {bresp}")
+          f"returned BRESP {bresp}, expected {want}")
+
+    # A rejected write never reaches storage, so it must not enter the model
+    # either - folding it would make every later read of those bytes disagree.
+    if want == VIP_MC_AXI4_RESP_DECERR_C:
+      self.rejects_done[port_id] += 1
+      return
 
     # Fold into the model only after the write is accepted, in beat order, so a
     # FIXED burst's later beats correctly overwrite the earlier ones.
@@ -2798,11 +2845,18 @@ class mc_axi4_soak_base(mc_base_test):
         size=self.get_axi_size_for_bytes(t.size_bytes), burst=t.burst,
         arqos=t.qos, port_id=port_id)
 
+    want = self._soak_expected_resp(t)
     for b, (data, resp, _last) in enumerate(beats):
-      if resp != VIP_MC_AXI4_RESP_OKAY_C:
+      if resp != want:
         raise AssertionError(
             f"soak txn {idx} port {port_id}: read at 0x{t.addr:x} beat {b} "
-            f"returned RRESP {resp}")
+            f"returned RRESP {resp}, expected {want}")
+
+    # A rejected read returns no data to compare - the model holds nothing for
+    # those bytes, since the matching writes were rejected too.
+    if want == VIP_MC_AXI4_RESP_DECERR_C:
+      self.rejects_done[port_id] += 1
+      return
 
     for b, (data, _resp, _last) in enumerate(beats):
       ba = soak_beat_addr(t, b)

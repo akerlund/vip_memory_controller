@@ -147,7 +147,7 @@ runs in tens to hundreds of clocks per test.
 | `tc_mc_rd_wr_grouping` | AXI4 | §11 item 1 turnaround-aware grouping: with `rd_wr_grouping_enable` and a read as the last issued command, expensive read page-misses and cheap write page-hits sit co-pending behind a held device window; grouping drains all reads before either write (pure readiness would grant the cheaper writes first), `get_rd_wr_grouped_count()` advances, and `get_bus_turnaround_count()` is exactly 1. |
 | `tc_mc_axi4_page_hit_streak` | AXI4 | a long same-row burst is governed device-side by `tCCD_L` per column access while AXI completion still matches the scoreboard. |
 | `tc_mc_axi4_write_coalesce` | AXI4 | with `write_coalescing_enable` + a pipelined manager (`man_wr_outstanding_max>1`), two same-line writes co-pending behind a held device window merge into one device access; both still get an OKAY BRESP (fan-out), the byte-lane overlay is correct, and `coalesced_write_count==1`. |
-| `tc_mc_axi4_soak` | AXI4 | the suite's one constrained-random test: ~96 randomized transactions (INCR/WRAP/FIXED, narrow and full-width, 1..16 beats, 4 ids, full QoS range, 0..8-clock gaps) replayed concurrently on both ports, every read byte checked against a golden model and the whole written image swept through the device backdoor at the end. Stimulus comes from `mc_soak_gen`, a shared explicit LCG that emits byte-identical programs in both flows, so a failure reproduces in both. `+MC_SOAK_SEED` / `+MC_SOAK_TXNS` / `+MC_SOAK_WRAP_PCT` (env vars of the same name in the Python flow). |
+| `tc_mc_axi4_soak` | AXI4 | the suite's one constrained-random test: ~96 randomized transactions (INCR/WRAP/FIXED, narrow and full-width, 1..16 beats, 4 ids, full QoS range, 0..8-clock gaps) replayed concurrently on both ports, every read byte checked against a golden model and the whole written image swept through the device backdoor at the end. The response itself is predicted, not assumed: a transaction whose byte span falls in one of `cfg.axi4`'s DECERR windows must return DECERR and is kept out of the golden model, so the random draw is free to reach the reject path instead of having to avoid it (see Notes). Stimulus comes from `mc_soak_gen`, a shared explicit LCG that emits byte-identical programs in both flows, so a failure reproduces in both. `+MC_SOAK_SEED` / `+MC_SOAK_TXNS` / `+MC_SOAK_WRAP_PCT` (env vars of the same name in the Python flow). |
 | `tc_mc_axi4_read_pipeline` | AXI4 | with a pipelined manager (`man_rd_outstanding_max>1`), N reads-with-response are issued via `vip_axi4_pipelined_seq`; all return their own correct data and the FE's peak in-flight read count exceeds 1 (a serial manager never would). |
 
 ## AXI4 config, agent & reject
@@ -261,6 +261,23 @@ runs in tens to hundreds of clocks per test.
   `tc_mc_axi4_wrap` asserts the issued device address directly (seed-independent),
   and the soak carries WRAP at 15% of its default mix. Regression case: seed 1,
   port 1 txn 12 (WRAP, 4 x 64 B, start `0xbbdc40`, region base `0xbbdc00`).
+- **Soak DECERR windows are predicted, not avoided.** `mc_tb_env` installs a
+  DECERR range `0x1000-0x1fff` for every AXI4 test, and `mc_soak_gen` draws
+  addresses across the whole device without consulting it. A rare seed therefore
+  produced a perfectly legal access inside the window, the controller correctly
+  rejected it, and the soak — which required OKAY unconditionally — called that a
+  failure. It was reachable by exactly 1 transaction in 5856 (seeds 1..61), which
+  is why seed 1 never showed it.
+  The soak now reads the windows out of `cfg.axi4` and predicts the response,
+  asserting DECERR where one is due and keeping those bytes out of the golden
+  model. Chosen over teaching the generator to dodge the window: the stimulus is
+  then untouched (every seed's program stays byte-identical, so the WRAP
+  reproducer above stays valid) and the reject path becomes covered by random
+  traffic rather than excluded from it. The span math is restated in the test
+  rather than called out of the front-end — predicting the response with the code
+  under test would make the check vacuous. It relies on `mc_soak_gen`
+  size-aligning every start address, which the test asserts rather than assumes.
+  Regression case: seed 42, port 0 txn 14 (INCR, 15 x 8 B at `0x1150`).
 - Coverage still owed (tracked in `vip_mc/IMPLEMENTATION_PLAN.md` §11):
   multi-channel striping, sub/pseudo-channel dispatch, a DFI face, and a dynamic
   timing-retune wrapper. (Write coalescing, the first residual-observability
