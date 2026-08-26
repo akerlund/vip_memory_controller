@@ -41,6 +41,7 @@ from vip_chi_types_pkg import (
   RspOpcode,
   chi_size_bytes,
   chi_xfer_dat_beats,
+  req_opcode_is_atomic_returning_data,
 )
 
 from vip_mc_axi4_types_pkg import VIP_MC_AXI4_RESP_OKAY_C
@@ -80,9 +81,9 @@ class vip_mc_chi_driver(vip_mc_fe_base):
     self.vif = None
 
     self.sn_node_id = 0
-    self.initial_req_credits = 16
-    self.initial_rsp_credits = 16
-    self.initial_dat_credits = 16
+    self.initial_req_credits = 15
+    self.initial_rsp_credits = 15
+    self.initial_dat_credits = 15
     self.split_write_rsp = True
 
     self.req_grant_pending = 0
@@ -98,6 +99,10 @@ class vip_mc_chi_driver(vip_mc_fe_base):
     self.dat_send_flit_q = []
     self.dat_send_time_q = []
     self.dat_send_last_q = []
+    self.rsp_announce_flit = None
+    self.dat_announce_flit = None
+    self.dat_announce_last = False
+    self.tx_activity_count = 0
 
     self.observed_req_count = 0
     self.issued_req_count = 0
@@ -183,7 +188,7 @@ class vip_mc_chi_driver(vip_mc_fe_base):
         self.handle_reset()
         continue
 
-      self.vif.drive(txlinkactiveack=self.vif.get_or("rxlinkactivereq"))
+      self.drive_link_sideband()
       if not self.link_active and self.vif.get_or("rxlinkactivereq"):
         self.link_active = True
         self.schedule_initial_credit_grants()
@@ -194,8 +199,12 @@ class vip_mc_chi_driver(vip_mc_fe_base):
         self.dat_send_credits += 1
 
       if self.link_active and self.vif.get_or("rxreqflitv"):
-        self.handle_req(self.vif.sample_flit("req", "rx"))
-        self.req_grant_pending += 1
+        req = self.vif.sample_flit("req", "rx")
+        # An LCRD return occupies a REQ flit but is not a transaction and must
+        # not be answered with another credit grant.
+        if int(req.get("opcode", 0)) != int(ReqOpcode.LCRD_RETURN):
+          self.handle_req(req)
+          self.req_grant_pending += 1
 
       if self.link_active and self.vif.get_or("rxdatflitv"):
         self.handle_write_data(self.vif.sample_flit("dat", "rx"))
@@ -231,6 +240,10 @@ class vip_mc_chi_driver(vip_mc_fe_base):
     self.dat_send_flit_q.clear()
     self.dat_send_time_q.clear()
     self.dat_send_last_q.clear()
+    self.rsp_announce_flit = None
+    self.dat_announce_flit = None
+    self.dat_announce_last = False
+    self.tx_activity_count = 0
 
     self.req_grant_pending = 0
     self.rsp_grant_pending = 0
@@ -276,8 +289,38 @@ class vip_mc_chi_driver(vip_mc_fe_base):
     if self.dat_grant_pending:
       self.dat_grant_pending -= 1
 
+  def link_drained(self) -> bool:
+    return (
+        self.req_grant_pending == 0 and
+        self.rsp_grant_pending == 0 and
+        self.dat_grant_pending == 0 and
+        self.rsp_send_credits == 0 and
+        self.dat_send_credits == 0 and
+        not self.rsp_send_flit_q and
+        not self.dat_send_flit_q and
+        self.rsp_announce_flit is None and
+        self.dat_announce_flit is None and
+        self.tx_activity_count == 0)
+
+  def drive_link_sideband(self) -> None:
+    if self.vif.get_or("rxlinkactivereq"):
+      want_link = True
+    else:
+      want_link = (
+          bool(self.vif.get_or("txlinkactivereq")) or
+          bool(self.vif.get_or("txlinkactiveack"))) and not self.link_drained()
+    if (self.vif.get_or("txlinkactivereq") and
+        not self.vif.get_or("txlinkactiveack")):
+      want_link = True
+    if self.vif.input_race_hold():
+      return
+    self.vif.drive(
+        txlinkactivereq=1 if want_link else 0,
+        txlinkactiveack=1 if self.vif.get_or("txlinkactivereq") else 0)
+
   def handle_req(self, req: dict) -> None:
     self.observed_req_count += 1
+    self.tx_activity_count += 1
     op = int(req.get("opcode", 0))
 
     if op in (int(ReqOpcode.READ_NO_SNP), int(ReqOpcode.READ_NO_SNP_SEP)):
@@ -356,6 +399,10 @@ class vip_mc_chi_driver(vip_mc_fe_base):
     entry.wdata = [0] * max(1, entry.beats)
     entry.wstrb = [(1 << self.geom.ROW_BYTES_P) - 1] * max(1, entry.beats)
 
+    # WriteNoSnpZero still uses the normal split write response shape: the RN
+    # must receive a DBID-bearing grant before the final Comp, even though no
+    # write DAT burst follows.
+    self.queue_write_grant(entry)
     if self.classify_decerr(entry):
       entry.chi_resp_err = int(RespErr.NDERR)
       self.make_pre_resolved(entry)
@@ -377,9 +424,20 @@ class vip_mc_chi_driver(vip_mc_fe_base):
 
   def handle_unsupported_req(self, req: dict) -> None:
     self.unsupported_count += 1
+    op = int(req.get("opcode", 0))
+    if req_opcode_is_atomic_returning_data(op):
+      self.logger.warning(
+          "Unsupported CHI data-returning atomic opcode 0x%x (txnid=0x%x) "
+          "-> CompData(NONDATA_ERROR)", op, int(req.get("txnid", 0)))
+      entry = self.new_entry_from_req(req, VipDramOp.RD)
+      entry.chi_resp_err = int(RespErr.NDERR)
+      self.make_pre_resolved(entry)
+      entry.rdata = [0] * max(1, entry.beats)
+      self.enqueue_read_completion(entry)
+      return
     self.logger.warning(
-        "Unsupported CHI REQ opcode 0x%x (txnid=0x%x) -> Comp(NONDATA_ERROR)",
-        int(req.get("opcode", 0)), int(req.get("txnid", 0)))
+      "Unsupported CHI REQ opcode 0x%x (txnid=0x%x) -> Comp(NONDATA_ERROR)",
+      op, int(req.get("txnid", 0)))
     entry = self.new_entry_from_req(req, VipDramOp.WR)
     entry.chi_is_write = True
     entry.chi_split_write_rsp = True
@@ -524,14 +582,25 @@ class vip_mc_chi_driver(vip_mc_fe_base):
     self.push_rsp(self.build_rsp_flit(entry, RspOpcode.COMP), target)
 
   def build_rsp_flit(self, entry: vip_mc_chi_cmd_entry, opcode) -> dict:
+    opcode = int(opcode)
+    resperr = int(entry.chi_resp_err)
+    if opcode in (int(RspOpcode.DBID_RESP), int(RspOpcode.DBID_RESP_ORD)):
+      resperr = int(RespErr.OKAY)
+    # Table A-4 uses the I encoding for the cache state on write grants and
+    # completions. Keep the assignment explicit at this protocol boundary.
+    resp = int(Resp.I)
+    if entry.chi_is_write and opcode in (
+        int(RspOpcode.COMP), int(RspOpcode.COMP_DBID_RESP)):
+      resp = int(Resp.I)
+    txnid = 0 if opcode == int(RspOpcode.PERSIST) else int(entry.chi_txnid)
     return {
-        "opcode": int(opcode),
+        "opcode": opcode,
         "tgtid": int(entry.chi_srcid),
         "srcid": int(entry.chi_tgtid),
-        "txnid": int(entry.chi_txnid),
+        "txnid": txnid,
         "dbid": int(entry.chi_dbid),
-        "resp": int(Resp.I),
-        "resperr": int(entry.chi_resp_err),
+        "resp": resp,
+        "resperr": resperr,
         "qos": int(entry.chi_qos) & 0xf,
     }
 
@@ -592,37 +661,78 @@ class vip_mc_chi_driver(vip_mc_fe_base):
       return True
     return (sim_time_ns() + BEAT_EPS_C) >= float(ready_time)
 
+  def announce_rsp_flit(self) -> bool:
+    if (not self.rsp_send_flit_q or self.rsp_send_credits <= 0 or
+        not self.send_time_reached(self.rsp_send_time_q[0])):
+      return False
+    self.rsp_announce_flit = self.rsp_send_flit_q.pop(0)
+    self.rsp_send_time_q.pop(0)
+    return True
+
+  def announce_dat_flit(self) -> bool:
+    if (not self.dat_send_flit_q or self.dat_send_credits <= 0 or
+        not self.send_time_reached(self.dat_send_time_q[0])):
+      return False
+    self.dat_announce_flit = self.dat_send_flit_q.pop(0)
+    self.dat_send_time_q.pop(0)
+    self.dat_announce_last = self.dat_send_last_q.pop(0)
+    return True
+
+  @staticmethod
+  def rsp_flit_closes_activity(flit: dict) -> bool:
+    return int(flit.get("opcode", 0)) in (
+        int(RspOpcode.COMP),
+        int(RspOpcode.COMP_DBID_RESP),
+        int(RspOpcode.COMP_PERSIST))
+
   def drive_sends(self) -> None:
     sending = False
     sending_resp_sep = False
 
-    if (self.rsp_send_flit_q and self.rsp_send_credits > 0 and
-        self.send_time_reached(self.rsp_send_time_q[0])):
-      flit = self.rsp_send_flit_q.pop(0)
-      self.rsp_send_time_q.pop(0)
+    self.vif.drive(txrspflitpend=0, txrspflitv=0)
+    if self.rsp_announce_flit is not None:
+      flit = self.rsp_announce_flit
       self.rsp_send_credits -= 1
-      self.vif.drive(txrspflitpend=0, txrspflitv=1)
       self.vif.drive_flit("rsp", flit)
+      self.vif.drive(txrspflitpend=0, txrspflitv=1)
+      self.rsp_announce_flit = None
       sending = True
+      if (self.rsp_flit_closes_activity(flit) and
+          self.tx_activity_count > 0):
+        self.tx_activity_count -= 1
       sending_resp_sep = int(flit.get("opcode", 0)) == int(RspOpcode.RESP_SEP_DATA)
-    else:
-      self.vif.drive(txrspflitv=0)
+    elif self.announce_rsp_flit():
+      self.vif.drive_flit("rsp", self.rsp_announce_flit)
+      self.vif.drive(txrspflitpend=1, txrspflitv=0)
 
-    if (self.dat_send_flit_q and self.dat_send_credits > 0 and
-        self.send_time_reached(self.dat_send_time_q[0]) and
-        not (sending_resp_sep and int(self.dat_send_flit_q[0].get("opcode", 0)) ==
+    self.vif.drive(txdatflitpend=0, txdatflitv=0)
+    if (self.dat_announce_flit is not None and
+        not (sending_resp_sep and
+             int(self.dat_announce_flit.get("opcode", 0)) ==
              int(DatOpcode.DATA_SEP_RESP))):
-      flit = self.dat_send_flit_q.pop(0)
-      self.dat_send_time_q.pop(0)
-      is_last = self.dat_send_last_q.pop(0)
+      flit = self.dat_announce_flit
       self.dat_send_credits -= 1
-      self.vif.drive(txdatflitpend=0 if is_last else 1, txdatflitv=1)
       self.vif.drive_flit("dat", flit)
+      self.vif.drive(
+          txdatflitpend=0 if self.dat_announce_last else 1,
+          txdatflitv=1)
+      self.dat_announce_flit = None
       sending = True
-    else:
-      self.vif.drive(txdatflitv=0)
+      if self.dat_announce_last and self.tx_activity_count > 0:
+        self.tx_activity_count -= 1
+    elif (self.dat_announce_flit is None and
+          not (sending_resp_sep and self.dat_send_flit_q and
+               int(self.dat_send_flit_q[0].get("opcode", 0)) ==
+               int(DatOpcode.DATA_SEP_RESP))):
+      if self.announce_dat_flit():
+        self.vif.drive_flit("dat", self.dat_announce_flit)
+        self.vif.drive(txdatflitpend=1, txdatflitv=0)
 
-    self.vif.drive(txsactive=1 if sending else 0)
+    if self.dat_announce_flit is not None and sending_resp_sep:
+      self.vif.drive(txdatflitpend=1)
+
+    self.vif.drive(
+        txsactive=1 if (self.tx_activity_count > 0 or sending) else 0)
 
   def get_decerr_count(self) -> int:
     return self.decerr_count if self.mc_cfg.perf_counters_enabled else 0

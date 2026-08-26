@@ -24,8 +24,10 @@
 
 `include "uvm_macros.svh"
 `include "uvm_pkg.sv"
+import uvm_pkg::*;
 `include "vip_mc_axi4_connect.sv"
 `include "vip_mc_chi_connect.sv"
+`include "mc_chi_sva_probe.sv"
 `include "mc_tb_pkg.sv"
 `include "mc_tc_pkg.sv"
 `include "mc_tb_top.sv"

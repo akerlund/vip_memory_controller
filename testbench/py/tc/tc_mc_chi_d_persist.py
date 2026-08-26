@@ -48,7 +48,7 @@ class tc_mc_chi_d_persist(mc_chi_base_test):
     assert int(fe.issued_req_count) == issued_before
 
     assert self._rsp_seen(0x5, RspOpcode.COMP, RespErr.OKAY)
-    assert self._rsp_seen(0x6, RspOpcode.PERSIST, RespErr.OKAY)
+    assert self._rsp_seen(0, RspOpcode.PERSIST, RespErr.OKAY)
     assert self._rsp_seen(0x6, RspOpcode.COMP_PERSIST, RespErr.OKAY)
 
   async def _send_raw_persist(self, opcode, txn_id: int, name: str) -> None:
@@ -60,6 +60,7 @@ class tc_mc_chi_d_persist(mc_chi_base_test):
         "size": 6,
         "txnid": int(txn_id),
         "srcid": 1,
+        "allowretry": 1,
     })
     await self.start_seq_or_timeout(seq)
 

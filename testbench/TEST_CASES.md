@@ -1,6 +1,6 @@
 # vip_mc example — test-case catalog
 
-The shared regression runs **56** testcases across both flows: the SystemVerilog
+The shared regression runs **57** testcases across both flows: the SystemVerilog
 UVM example in [sv/](sv/) and the pyUVM/cocotb port in [py/](py/). Each builds
 its env (only one test runs per `simv`, see [sv/UVM_TB.md](sv/UVM_TB.md) §1/§3),
 drives a full `manager → vip_mc → vip_dram` scenario, and checks read-back data,
@@ -8,7 +8,7 @@ telemetry counters, and/or the timing scoreboard. This catalog is the
 authoritative list; the per-flow READMEs do not duplicate it.
 
 The Python flow adds one flow-only testcase, `tc_mc_core_slice` — a pure
-controller-core unit slice with no HDL activity — for 57 total.
+controller-core unit slice with no HDL activity — for 58 total.
 
 Build and run the SV flow from the repository root with:
 
@@ -45,11 +45,13 @@ active clock edges. Every testcase below runs in both flows. The Python-only
 `tc_mc_core_slice` measured 0.0 ns — it drives no clock — and is not part of
 the SV UVM catalog.
 
-The last two rows are deliberately long. `tc_mc_axi4_soak` replays a randomized
-program rather than one directed scenario, and `tc_mc_refresh_realistic` has to
-span several native `tREFI` windows for a refresh to fire at all. Together they
-are roughly half the regression's simulated time; the rest of the suite still
-runs in tens to hundreds of clocks per test.
+The soak rows are deliberately long. `tc_mc_axi4_soak` replays a randomized
+program rather than one directed scenario, `tc_mc_mixed_soak` runs 32000
+requests per port in SV and 1500 per port in Python by default, and
+`tc_mc_refresh_realistic` has to span several native `tREFI` windows for a
+refresh to fire at all. Together they are the long-running part of the
+regression; the rest of the suite still runs in tens to hundreds of clocks per
+test.
 
 | Test | Env | SV time | SV clocks | PY time | PY clocks |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -104,11 +106,17 @@ runs in tens to hundreds of clocks per test.
 | `tc_mc_narrow_axi4` | NARROW | 470.0 ns | 47.0 | 420.0 ns | 42.0 |
 | `tc_mc_chi_d_narrow` | CHI-N32 | 500.0 ns | 50.0 | 440.0 ns | 44.0 |
 | `tc_mc_mixed_concurrent` | MIXED | 1490.0 ns | 149.0 | 1470.0 ns | 147.0 |
+| `tc_mc_mixed_soak` | MIXED | 5597130.0 ns | 559713.0 | 292720.0 ns* | 29272.0* |
 | `tc_mc_equiv_axi4` | AXI4 | 755.0 ns | 75.5 | 660.0 ns | 66.0 |
 | `tc_mc_equiv_chi_d` | CHI-D | 1050.0 ns | 105.0 | 1040.0 ns | 104.0 |
 | `tc_mc_equiv_chi_e` | CHI-E | 1050.0 ns | 105.0 | 1040.0 ns | 104.0 |
 | `tc_mc_axi4_soak` | AXI4 | 12045.0 ns | 1204.5 | 11330.0 ns | 1133.0 |
 | `tc_mc_refresh_realistic` | AXI4 | 39145.0 ns | 3914.5 | 39450.0 ns | 3945.0 |
+
+\* The soak defaults are calibrated independently because the simulator
+throughput differs: 32000 requests per port passed in VCS at 59.68 s CPU time,
+and 1500 per port passed in Verilator at 57.25 s reported real time. Both runs
+used seed 1.
 
 ---
 
@@ -214,6 +222,7 @@ runs in tens to hundreds of clocks per test.
 | Test | Env | Proves |
 | --- | --- | --- |
 | `tc_mc_mixed_concurrent` | MIXED | an AXI4 port and a CHI-D port on one `vip_mc`/backend/device, driven concurrently to disjoint windows, both read back correctly — concurrent cross-protocol arbitration with no interference. |
+| `tc_mc_mixed_soak` | MIXED | the same shared AXI4 + CHI-D topology with reproducible randomized reads/writes on both ports concurrently; AXI4 varies legal FIXED/INCR/WRAP bursts, beat sizes, lengths, sub-line offsets, IDs, QoS, and gaps while CHI-D varies full-line direction, addresses, QoS, gaps, and payloads. The defaults are 32000 requests per port in SV and 1500 in Python, each calibrated to approximately 60 seconds on the reference host, and every read is checked against a per-port golden model. Override the per-port count and seed with `+MC_MIXED_SOAK_TXNS` / `+MC_MIXED_SOAK_SEED` (or the same environment variables in Python). |
 | `tc_mc_equiv_axi4` | AXI4 | the shared deterministic program (full / partial-BE writes + reads) replayed through AXI4, every read checked against a fresh golden model. |
 | `tc_mc_equiv_chi_d` | CHI-D | the identical program replayed through the CHI-D SN front-end against the same model logic. |
 | `tc_mc_equiv_chi_e` | CHI-E | the identical program replayed through the CHI-E SN front-end. All three equiv legs passing proves byte-identical device state + read data across the protocols. |

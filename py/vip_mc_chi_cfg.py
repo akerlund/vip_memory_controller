@@ -27,15 +27,23 @@
 
 from __future__ import annotations
 
+import warnings
+
+
+CHI_LCRD_MAX_C = 15
+
 
 class vip_mc_chi_cfg:
 
   def __init__(self, name="vip_mc_chi_cfg"):
     self.name = name
     self.sn_node_id = 0
-    self.initial_req_credits = 16
-    self.initial_rsp_credits = 16
-    self.initial_dat_credits = 16
+    # Fifteen is the CHI protocol maximum. Keep the knobs open above that
+    # value so a negative-control test can model a broken peer and prove the
+    # checker catches it.
+    self.initial_req_credits = 15
+    self.initial_rsp_credits = 15
+    self.initial_dat_credits = 15
     self.split_write_rsp = True
 
   def validate(self) -> None:
@@ -51,3 +59,13 @@ class vip_mc_chi_cfg:
       raise RuntimeError(
           f"[{self.name}] initial_dat_credits must be >= 1 "
           f"(got {self.initial_dat_credits})")
+    # Keep values above the CHI maximum representable for negative-control
+    # tests. Normal configurations use the protocol-max default of 15.
+    for field_name in ("initial_req_credits", "initial_rsp_credits",
+                       "initial_dat_credits"):
+      value = int(getattr(self, field_name))
+      if value > CHI_LCRD_MAX_C:
+        warnings.warn(
+            f"[{self.name}] {field_name} ({value}) exceeds the CHI maximum "
+            f"of {CHI_LCRD_MAX_C}; retained for checker-negative testing",
+            RuntimeWarning, stacklevel=2)

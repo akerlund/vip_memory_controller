@@ -17,6 +17,14 @@ PYTHONPATH=py:submodules/vip_axi4_agent/py:submodules/vip_dram/py:submodules/vip
 ./testbench/py/run_fusesoc.sh --target sim
 ```
 
+Named regressions are shared with the SystemVerilog flow through
+`testbench/.refuse.yml`. Run them from this directory:
+
+```bash
+refuse verilator --list-regressions
+refuse verilator --regression mixed
+```
+
 The Python status probe is mirrored into the wave-visible HDL scope
 `mc_hdl_top.status_if`. GTKWave shows the enum fields as numbers in VCD, so
 `status_if` also exposes decoded one-bit helpers such as `complete_page_miss`,

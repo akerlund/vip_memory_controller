@@ -1,0 +1,118 @@
+# Regression targets shared by the SystemVerilog and Python testbench flows.
+#
+# Run SV commands from testbench/sv and Python/Verilator commands from
+# testbench/py.  refuse selects the nearest flow-specific FuseSoC core while
+# this file provides the common named regression groups.
+
+coverage:
+  enabled: false
+  verilator:
+    build_args:
+      - --coverage-line
+      - --coverage-toggle
+      - --coverage-fsm
+      - --coverage-expr
+    report: true
+    lcov: true
+    html: true
+
+regressions:
+
+  full:
+    tests:
+      - match: "^tc_mc_.*$"
+    jobs:
+      vcs: 1
+      verilator: 8
+    repeats: 1
+
+  smoke:
+    tests:
+      - tc_mc_cfg
+      - tc_mc_axi4_single_beat
+      - tc_mc_chi_d_write_read
+      - tc_mc_chi_e_write_read
+      - tc_mc_equiv_axi4
+      - tc_mc_equiv_chi_d
+      - tc_mc_equiv_chi_e
+      - tc_mc_mixed_concurrent
+    jobs:
+      vcs: 1
+      verilator: 4
+    repeats: 1
+
+  axi4:
+    tests:
+      - match: "^tc_mc_axi4_.*$"
+    jobs:
+      vcs: 1
+      verilator: 6
+    repeats: 1
+
+  chi:
+    tests:
+      - match: "^tc_mc_chi_(d|e)_.*$"
+      - match: "^tc_mc_equiv_chi_[de]$"
+      - tc_mc_mixed_concurrent
+      - tc_mc_mixed_soak
+    jobs:
+      vcs: 1
+      verilator: 6
+    repeats: 1
+
+  scheduling:
+    tests:
+      - tc_mc_axi4_fr_fcfs_mixed_rd_wr
+      - tc_mc_fr_fcfs_starvation_cap
+      - tc_mc_qos_scheduling
+      - tc_mc_qos_aging
+      - tc_mc_rd_wr_grouping
+      - tc_mc_preset_sweep
+    jobs:
+      vcs: 1
+      verilator: 6
+    repeats: 1
+
+  memory:
+    tests:
+      - match: "^tc_mc_refresh.*$"
+      - tc_mc_ecc_slverr
+      - tc_mc_init_delay
+      - tc_mc_reset_recovery
+      - tc_mc_multi_rank
+      - tc_mc_narrow_axi4
+      - tc_mc_observability
+      - tc_mc_status_probe
+      - tc_mc_telemetry_counters
+    jobs:
+      vcs: 1
+      verilator: 6
+    repeats: 1
+
+  equivalence:
+    tests:
+      - tc_mc_equiv_axi4
+      - match: "^tc_mc_equiv_chi_[de]$"
+      - tc_mc_mixed_concurrent
+    jobs:
+      vcs: 1
+      verilator: 4
+    repeats: 1
+
+  mixed:
+    tests:
+      - tc_mc_mixed_concurrent
+      - tc_mc_mixed_soak
+    jobs:
+      vcs: 1
+      verilator: 4
+    repeats: 1
+
+  coverage:
+    tests:
+      - match: "^tc_mc_.*$"
+    jobs:
+      vcs: 1
+      verilator: 8
+    coverage: true
+    repeats: 1

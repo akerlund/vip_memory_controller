@@ -52,7 +52,6 @@ class tc_mc_chi_e_read_sep extends mc_chi_base_test #(VIP_CHI_CFG_E_C, VIP_MC_CH
     this._wr_seq.set_requests(1);
     this._wr_seq.set_initial_addr(CHI_SEP_ADDR_C);
     this._wr_seq.set_size(3'd6);
-    this._wr_seq.set_allow_retry(1'b0);
     this._wr_seq.set_data_type(VIP_CHI_DATA_COUNTER_E);
     this._wr_seq.set_counter_value(chi_item_e_t::data_t'('h40));
     this._wr_seq.set_counter_increment(chi_item_e_t::data_t'('h1));
@@ -65,7 +64,6 @@ class tc_mc_chi_e_read_sep extends mc_chi_base_test #(VIP_CHI_CFG_E_C, VIP_MC_CH
     this._rd_seq.set_requests(1);
     this._rd_seq.set_initial_addr(CHI_SEP_ADDR_C);
     this._rd_seq.set_size(3'd6);
-    this._rd_seq.set_allow_retry(1'b0);
     this._rd_seq.set_sep_read(1'b1);
     this._rd_seq.set_return_nid(chi_item_e_t::node_id_t'(0));
     this._rd_seq.set_return_txn_id(chi_item_e_t::txn_id_t'(RETURN_TXN_C));

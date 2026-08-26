@@ -155,7 +155,6 @@ class mc_chi_base_test(uvm_test):
     seq.set_requests(1)
     seq.set_initial_addr(int(addr))
     seq.set_size(int(size))
-    seq.set_allow_retry(0)
     seq.set_data_type(data_type)
     if data_type == DataType.CUSTOM:
       seq.set_data([int(x) for x in data_beats])
@@ -176,7 +175,6 @@ class mc_chi_base_test(uvm_test):
     seq.set_requests(1)
     seq.set_initial_addr(int(addr))
     seq.set_size(int(size))
-    seq.set_allow_retry(0)
     seq.set_sep_read(bool(sep_read))
     seq.set_return_nid(int(return_nid))
     seq.set_return_txn_id(int(return_txn_id))
@@ -190,7 +188,6 @@ class mc_chi_base_test(uvm_test):
     seq.set_requests(1)
     seq.set_initial_addr(int(addr))
     seq.set_size(int(size))
-    seq.set_allow_retry(0)
     seq.set_get_response(True)
     seq.set_verbose(False)
     await self.start_seq_or_timeout(seq)

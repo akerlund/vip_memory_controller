@@ -41,6 +41,16 @@ module mc_tb_top;
   // test. No hand-rolled clock generation or reset override lives here anymore.
   clk_rst_if clk_rst_vif ();
 
+  // The clk_rst agent deliberately starts its pre-reset phase with rst_n high.
+  // Seed reset before the first clock edge so the passive CHI SVA state machines
+  // do not evaluate an uninitialised LASM state; the agent owns the subsequent
+  // clock and reset sequence.
+  initial begin
+    #1ps;
+    clk_rst_vif.rst   = 1'b1;
+    clk_rst_vif.rst_n = 1'b0;
+  end
+
   vip_mc_status_if #(N_PORTS_C) status_vif (
     .clk   ( clk_rst_vif.clk   ),
     .rst_n ( clk_rst_vif.rst_n )
@@ -274,6 +284,46 @@ module mc_tb_top;
     .rn ( rni_vif    )
   );
 
+  vip_chi_if #(VIP_CHI_CFG_C, chi_types_t, VIP_CHI_ROLE_SNF_E) mc_chi_check_vif (
+    .clk   ( clk_rst_vif.clk   ),
+    .rst_n ( clk_rst_vif.rst_n )
+  );
+
+  mc_chi_sva_probe u_mc_chi_sva_probe (
+    .mc      ( mc_chi_vif       ),
+    .checker ( mc_chi_check_vif )
+  );
+
+  vip_chi_sva #(
+    .CFG_P        ( VIP_CHI_CFG_C ),
+    .FLIT_TYPES_T ( chi_types_t   ),
+    .ROLE_P       ( VIP_CHI_ROLE_RNI_E )
+  ) rni_sva (
+    .vif                            ( rni_vif ),
+    .checks_enable                  ( (rni_vif.txlinkactivereq === 1'b1) ||
+                                       (rni_vif.rxlinkactivereq === 1'b1) ),
+    .dat_reorder_allowed            ( 1'b0 ),
+    .dat_interleave_allowed         ( 1'b0 ),
+    .txsactive_extend_max_cycles    ( 0 ),
+    .link_activation_timeout_cycles ( 0 ),
+    .link_deactivation_timeout_cycles( 0 )
+  );
+
+  vip_chi_sva #(
+    .CFG_P        ( VIP_CHI_CFG_C ),
+    .FLIT_TYPES_T ( chi_types_t   ),
+    .ROLE_P       ( VIP_CHI_ROLE_SNF_E )
+  ) mc_snf_sva (
+    .vif                            ( mc_chi_check_vif ),
+    .checks_enable                  ( (mc_chi_check_vif.txlinkactivereq === 1'b1) ||
+                                       (mc_chi_check_vif.rxlinkactivereq === 1'b1) ),
+    .dat_reorder_allowed            ( 1'b0 ),
+    .dat_interleave_allowed         ( 1'b0 ),
+    .txsactive_extend_max_cycles    ( 0 ),
+    .link_activation_timeout_cycles ( 0 ),
+    .link_deactivation_timeout_cycles( 0 )
+  );
+
   // CHI-E variant of the slice (the D/E matrix). A second SN+RN-I interface pair
   // built with the issue=E cfg family, bridged by its own connect. Only one test
   // runs per simv, so these share the CHI-D config_db keys below -- uvm_config_db
@@ -294,6 +344,46 @@ module mc_tb_top;
     .rn ( rni_vif_e    )
   );
 
+  vip_chi_if #(VIP_CHI_CFG_E_C, chi_types_e_t, VIP_CHI_ROLE_SNF_E) mc_chi_check_vif_e (
+    .clk   ( clk_rst_vif.clk   ),
+    .rst_n ( clk_rst_vif.rst_n )
+  );
+
+  mc_chi_sva_probe u_mc_chi_sva_probe_e (
+    .mc      ( mc_chi_vif_e       ),
+    .checker ( mc_chi_check_vif_e )
+  );
+
+  vip_chi_sva #(
+    .CFG_P        ( VIP_CHI_CFG_E_C ),
+    .FLIT_TYPES_T ( chi_types_e_t   ),
+    .ROLE_P       ( VIP_CHI_ROLE_RNI_E )
+  ) rni_sva_e (
+    .vif                            ( rni_vif_e ),
+    .checks_enable                  ( (rni_vif_e.txlinkactivereq === 1'b1) ||
+                                       (rni_vif_e.rxlinkactivereq === 1'b1) ),
+    .dat_reorder_allowed            ( 1'b0 ),
+    .dat_interleave_allowed         ( 1'b0 ),
+    .txsactive_extend_max_cycles    ( 0 ),
+    .link_activation_timeout_cycles ( 0 ),
+    .link_deactivation_timeout_cycles( 0 )
+  );
+
+  vip_chi_sva #(
+    .CFG_P        ( VIP_CHI_CFG_E_C ),
+    .FLIT_TYPES_T ( chi_types_e_t   ),
+    .ROLE_P       ( VIP_CHI_ROLE_SNF_E )
+  ) mc_snf_sva_e (
+    .vif                            ( mc_chi_check_vif_e ),
+    .checks_enable                  ( (mc_chi_check_vif_e.txlinkactivereq === 1'b1) ||
+                                       (mc_chi_check_vif_e.rxlinkactivereq === 1'b1) ),
+    .dat_reorder_allowed            ( 1'b0 ),
+    .dat_interleave_allowed         ( 1'b0 ),
+    .txsactive_extend_max_cycles    ( 0 ),
+    .link_activation_timeout_cycles ( 0 ),
+    .link_deactivation_timeout_cycles( 0 )
+  );
+
   // Narrow-DAT (32 B) CHI slice for the multi-beat gather test: a 64 B WriteNoSnp
   // presents two 32 B DAT beats that gather into one 64 B DRAM row word. Same
   // config_db keys as the CHI-D slice, distinguished by the parameterized vif type.
@@ -310,6 +400,46 @@ module mc_tb_top;
   vip_mc_chi_connect u_chi_connect_n32 (
     .mc ( mc_chi_vif_n32 ),
     .rn ( rni_vif_n32    )
+  );
+
+  vip_chi_if #(VIP_CHI_CFG_N32_C, chi_types_n32_t, VIP_CHI_ROLE_SNF_E) mc_chi_check_vif_n32 (
+    .clk   ( clk_rst_vif.clk   ),
+    .rst_n ( clk_rst_vif.rst_n )
+  );
+
+  mc_chi_sva_probe u_mc_chi_sva_probe_n32 (
+    .mc      ( mc_chi_vif_n32       ),
+    .checker ( mc_chi_check_vif_n32 )
+  );
+
+  vip_chi_sva #(
+    .CFG_P        ( VIP_CHI_CFG_N32_C ),
+    .FLIT_TYPES_T ( chi_types_n32_t   ),
+    .ROLE_P       ( VIP_CHI_ROLE_RNI_E )
+  ) rni_sva_n32 (
+    .vif                            ( rni_vif_n32 ),
+    .checks_enable                  ( (rni_vif_n32.txlinkactivereq === 1'b1) ||
+                                       (rni_vif_n32.rxlinkactivereq === 1'b1) ),
+    .dat_reorder_allowed            ( 1'b0 ),
+    .dat_interleave_allowed         ( 1'b0 ),
+    .txsactive_extend_max_cycles    ( 0 ),
+    .link_activation_timeout_cycles ( 0 ),
+    .link_deactivation_timeout_cycles( 0 )
+  );
+
+  vip_chi_sva #(
+    .CFG_P        ( VIP_CHI_CFG_N32_C ),
+    .FLIT_TYPES_T ( chi_types_n32_t   ),
+    .ROLE_P       ( VIP_CHI_ROLE_SNF_E )
+  ) mc_snf_sva_n32 (
+    .vif                            ( mc_chi_check_vif_n32 ),
+    .checks_enable                  ( (mc_chi_check_vif_n32.txlinkactivereq === 1'b1) ||
+                                       (mc_chi_check_vif_n32.rxlinkactivereq === 1'b1) ),
+    .dat_reorder_allowed            ( 1'b0 ),
+    .dat_interleave_allowed         ( 1'b0 ),
+    .txsactive_extend_max_cycles    ( 0 ),
+    .link_activation_timeout_cycles ( 0 ),
+    .link_deactivation_timeout_cycles( 0 )
   );
 
   initial begin
@@ -356,6 +486,11 @@ module mc_tb_top;
       "uvm_test_top.env.rni_agent",
       "vif",
       rni_vif);
+    uvm_config_db #(virtual vip_chi_if #(VIP_CHI_CFG_C, chi_types_t, VIP_CHI_ROLE_SNF_E))::set(
+      null,
+      "*",
+      "mc_chi_check_vif",
+      mc_chi_check_vif);
 
     // CHI-E slice: same keys/paths as the CHI-D slice above, distinguished only
     // by the parameterized vif type (issue=E). A CHI-E test's env gets these.
@@ -369,6 +504,11 @@ module mc_tb_top;
       "uvm_test_top.env.rni_agent",
       "vif",
       rni_vif_e);
+    uvm_config_db #(virtual vip_chi_if #(VIP_CHI_CFG_E_C, chi_types_e_t, VIP_CHI_ROLE_SNF_E))::set(
+      null,
+      "*",
+      "mc_chi_check_vif",
+      mc_chi_check_vif_e);
 
     // Narrow-DAT (32 B) CHI slice: same keys/paths, distinguished by vif type.
     uvm_config_db #(virtual vip_mc_chi_if #(VIP_MC_CHI_CFG_N32_C))::set(
@@ -381,6 +521,11 @@ module mc_tb_top;
       "uvm_test_top.env.rni_agent",
       "vif",
       rni_vif_n32);
+    uvm_config_db #(virtual vip_chi_if #(VIP_CHI_CFG_N32_C, chi_types_n32_t, VIP_CHI_ROLE_SNF_E))::set(
+      null,
+      "*",
+      "mc_chi_check_vif",
+      mc_chi_check_vif_n32);
 
     $timeformat(-9, 3, "", 11);
     run_test();

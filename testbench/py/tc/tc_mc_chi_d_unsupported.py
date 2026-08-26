@@ -41,11 +41,12 @@ class tc_mc_chi_d_unsupported(mc_chi_base_test):
     seq.add_raw_req({
         "opcode": int(ReqOpcode.ATOMIC_STORE_0),
         "addr": CHI_WRITE_READ_ADDR_C,
-        "size": 6,
+        "size": 3,
         "txnid": 0x7,
         "srcid": 1,
         "tgtid": 0,
         "qos": 0,
+        "allowretry": 1,
     })
     await self.start_seq_or_timeout(seq)
     await self.rni_vif.clocks(20)

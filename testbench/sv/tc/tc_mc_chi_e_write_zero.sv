@@ -53,7 +53,6 @@ class tc_mc_chi_e_write_zero extends mc_chi_base_test #(VIP_CHI_CFG_E_C, VIP_MC_
     this._wr_seq.set_requests(1);
     this._wr_seq.set_initial_addr(CHI_ZERO_ADDR_C);
     this._wr_seq.set_size(3'd6);
-    this._wr_seq.set_allow_retry(1'b0);
     this._wr_seq.set_data_type(VIP_CHI_DATA_COUNTER_E);
     this._wr_seq.set_counter_value(chi_item_e_t::data_t'('h11));
     this._wr_seq.set_counter_increment(chi_item_e_t::data_t'('h1));
@@ -66,7 +65,6 @@ class tc_mc_chi_e_write_zero extends mc_chi_base_test #(VIP_CHI_CFG_E_C, VIP_MC_
     this._rd_seq.set_requests(1);
     this._rd_seq.set_initial_addr(CHI_ZERO_ADDR_C);
     this._rd_seq.set_size(3'd6);
-    this._rd_seq.set_allow_retry(1'b0);
     this._rd_seq.set_get_response(1'b1);
     this._rd_seq.set_verbose(1'b0);
     this._rd_seq.start(this._env.rni_agent.sequencer);
@@ -82,7 +80,6 @@ class tc_mc_chi_e_write_zero extends mc_chi_base_test #(VIP_CHI_CFG_E_C, VIP_MC_
     wz_seq.set_requests(1);
     wz_seq.set_initial_addr(CHI_ZERO_ADDR_C);
     wz_seq.set_size(3'd6);
-    wz_seq.set_allow_retry(1'b0);
     wz_seq.set_get_response(1'b1);
     wz_seq.set_verbose(1'b0);
     wz_seq.start(this._env.rni_agent.sequencer);
@@ -92,7 +89,6 @@ class tc_mc_chi_e_write_zero extends mc_chi_base_test #(VIP_CHI_CFG_E_C, VIP_MC_
     this._rd_seq.set_requests(1);
     this._rd_seq.set_initial_addr(CHI_ZERO_ADDR_C);
     this._rd_seq.set_size(3'd6);
-    this._rd_seq.set_allow_retry(1'b0);
     this._rd_seq.set_get_response(1'b1);
     this._rd_seq.set_verbose(1'b0);
     this._rd_seq.start(this._env.rni_agent.sequencer);

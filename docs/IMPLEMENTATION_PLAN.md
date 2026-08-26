@@ -3028,6 +3028,26 @@ connector wired in `mc_tb_top`. Directed coverage:
   (Store/Load/Swap/Compare), each rejected with Comp(NONDATA_ERROR); snoop/DVM are
   not receivable by an SN (no SNP channel), so there is no reject path for them.
 
+#### CHI-agent conformance upgrade status
+
+The MC CHI front-end now tracks the current `vip_chi_agent` `dev` interface and
+binds the agent checker at both the RN-I and MC/SN endpoints in the SV and
+pyUVM/cocotb environments. Checker reports are part of the test verdict, with
+per-rule and per-opcode CSV export. The MC side also uses protocol-max 15-credit
+defaults, validates out-of-range credit configurations, announces every RSP/DAT
+flit one cycle before transmission, and holds `TXSACTIVE` across each request's
+full completion window. The 29 MC-test `set_allow_retry(0)` overrides were
+removed; the agent's own retry tests remain unchanged.
+
+The Python CHI/mixed subset currently passes all 15 tests, including the checker
+export/vacuity sweep. A clean `refuse vcs --clean` compile now passes with the
+UVM-enabled VCS installation. The representative
+`tc_mc_chi_d_write_read` run also passes with zero UVM errors and fatals after
+the testbench seeds reset before the first clock edge. Full SV execution remains
+open until the complete CHI regression and checker-vacuity report are audited;
+VCS emits one non-fatal duplicate factory-name warning for the package-scoped
+`vip_gauss` class used by both agent packages.
+
 ### 14.2 Refresh and initialization
 
 - **`VIP_MC_REFRESH_DEFERRED_E`** (`vip_mc_refresh.sv`) postpones refreshes (one

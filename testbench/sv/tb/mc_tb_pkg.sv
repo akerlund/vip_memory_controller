@@ -54,6 +54,10 @@ package mc_tb_pkg;
   import vip_mc_types_pkg::*;
   import vip_mc_pkg::*;
 
+  // The report helpers are package-scoped because the environments below are
+  // package classes; compilation-unit functions are not visible from here.
+  `include "mc_chi_check_report.svh"
+
   localparam vip_dram_cfg_t DRAM_CFG_C = VIP_DRAM_CFG_DEFAULT_C;
 
   localparam vip_mc_axi4_cfg_t VIP_MC_AXI4_CFG_C = '{
@@ -239,6 +243,8 @@ package mc_tb_pkg;
   };
 
   typedef vip_mc_env_cfg #(DRAM_CFG_C, N_MIXED_PORTS_C, MIXED_PORTS_C) mixed_env_cfg_t;
+
+  `include "mc_mixed_soak_gen.sv"
 
   // Disjoint per-protocol address windows so each leg verifies its own data and a
   // cross-protocol byte leak would be caught (row = 64 B, both clear of each

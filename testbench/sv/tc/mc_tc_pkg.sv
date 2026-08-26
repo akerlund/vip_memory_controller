@@ -127,6 +127,9 @@ package mc_tc_pkg;
   // Mixed-protocol concurrency: one vip_mc with an AXI4 port and a CHI-D port
   // over one shared backend/device, driven concurrently (see mc_mixed_tb_env).
   `include "tc_mc_mixed_concurrent.sv"
+  // Randomized mixed-protocol soak: the same AXI4 + CHI-D topology with a
+  // reproducible read/write stream on each port.
+  `include "tc_mc_mixed_soak.sv"
 
   // Narrow-bus (multi-beat / sub-row) slice: host bus narrower than the DRAM row
   // (WDATA_BYTES < ROW_BYTES) via a 128 B-row device over the stock 64 B ports.

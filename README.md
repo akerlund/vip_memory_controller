@@ -8,7 +8,7 @@ protocol-agnostic backend.
 The VIP ships in **two implementations**: the SystemVerilog UVM source under
 [`sv/`](sv/) and the pyUVM/cocotb port under [`py/`](py/), which runs on
 Verilator. They are feature-equivalent and share one testcase catalog — the
-same 56 testcases run in both flows. This README is the **common reference**:
+same 57 testcases run in both flows. This README is the **common reference**:
 the architecture, configuration, and feature set below apply to both, and the
 code snippets are shown in SystemVerilog for concreteness with the Python API
 mirroring them.
@@ -32,11 +32,98 @@ Current delivered slice:
   `first/last_beat_ready_time`, B driven at `last_beat_ready_time`
 - `backend.issued_port` grant-order tap + an example latency scoreboard
   (`mc_scoreboard`) that checks observed B/R timing against `dram.predict()`
-- real `vip_dram` end-to-end example harness in `testbench/sv` (56 testcases in
+- real `vip_dram` end-to-end example harness in `testbench/sv` (57 testcases in
   one build: 12 CHI — 8 CHI-D directed, a 3-test CHI-E D/E matrix, and a 32 B-DAT
   narrow case — plus AXI4, scheduling, refresh, ECC, mixed and equivalence
   coverage), mirrored by the pyUVM/cocotb port in `testbench/py`; see
   [testbench/TEST_CASES.md](testbench/TEST_CASES.md)
+
+## Feature snapshot
+
+This VIP models a configurable memory controller at the host-protocol and
+DRAM-transaction boundary. AXI4 and CHI traffic share one backend, one owned
+`vip_dram` model, and one set of scheduling, timing, refresh, ECC, and
+observability policies. In short:
+
+- **Architecture and protocol surface**
+  - A protocol-agnostic backend with per-port ingress, shared command
+    arbitration, device-window limiting, refresh arbitration, and completion
+    dispatch.
+  - AXI4 `INCR`, `FIXED`, and `WRAP` bursts, narrow and unaligned transfers,
+    exclusive accesses, USER passthrough, DECERR windows, and bounded
+    `AW`/`AR`/`W`/response backpressure.
+  - An opt-in CHI SN memory-target front-end supporting CHI-D and CHI-E,
+    `ReadNoSnp`, `ReadNoSnpSep`, `WriteNoSnpFull`, `WriteNoSnpPtl`, and
+    `WriteNoSnpZero`, with legal completion, DBID, separated-read, and
+    `ReadReceipt` responses.
+  - CHI DECERR classification and defined rejection of unsupported requests;
+    snoop, DVM, stash, and coherent RN-F/HN-F behavior remain outside this
+    memory-target VIP's scope.
+  - Multiple host ports may target the same shared device. Compile-time port
+    descriptors select AXI4 or CHI per port, while runtime address regions,
+    arbitration weights, and protocol-specific policy remain configurable.
+- **Scheduling and backend policy**
+  - QoS classes with strict same-stream ordering, aging promotion, and
+    anti-starvation behavior for low-priority traffic.
+  - Optional readiness-aware FR-FCFS arbitration, starvation-cap overrides,
+    and read/write direction grouping with a configurable run bound.
+  - Optional same-stream write coalescing with newest-byte-wins lane overlay,
+    plus counters for coalescing, reorder, grouping, turnaround, and forced
+    service decisions.
+  - Finite device in-flight and response-buffer windows, outstanding request
+    limits, and explicit queue-depth observability.
+  - Shared address-map validation and decode, with the resolved layout copied
+    into the owned `vip_dram` instance so scheduling and device timing agree.
+- **CHI link and flow control**
+  - Link activation and deactivation over the MC-owned CHI interface, with
+    `LINKACTIVEREQ`/`LINKACTIVEACK`, `TXSACTIVE`, `FLITPEND`, and per-channel
+    L-credit handling.
+  - Configurable initial REQ/RSP/DAT credit pools, credit validation, and
+    credit-aware send/receive backpressure.
+  - Split-write response policy (`DBIDResp` followed by `Comp`, or combined
+    `CompDBIDResp`), CHI-E field support, and reset-safe transaction cleanup.
+  - The SystemVerilog testbench uses `mc_chi_sva_probe` as a passive structural
+    adapter to the standard CHI checker interface. The Python flow binds its
+    checker directly to the Python `ChiBus` and therefore needs no probe file.
+- **DRAM timing and reliability**
+  - Real `vip_dram` command/response behavior with row, bank, rank, burst,
+    turnaround, and per-beat readiness timing visible to the controller.
+  - Per-beat AXI4 read pacing and CHI data timing, optional timing honoring,
+    and an example latency scoreboard against `dram.predict()`.
+  - Periodic or deferred refresh with refresh debt, catch-up bursts, rank
+    handling, and configurable `tREFI` override.
+  - Optional initialization delay after reset and controller-side SECDED
+    classification of correctable and uncorrectable device read faults.
+- **Observability and integration**
+  - Controller status interface, per-port completion and byte counters,
+    latency and occupancy histograms, bandwidth/utilization, row-hit and
+    prediction accuracy, ECC, refresh, QoS, and backpressure counters.
+  - Four analysis paths where applicable — host/device command flow and CHI
+    REQ/RSP/DAT observations — feeding scoreboards, coverage, and protocol
+    evidence.
+  - SystemVerilog UVM and pyUVM/cocotb implementations with matching public
+    configuration concepts, a shared testcase catalogue, and FuseSoC build
+    targets for VCS and Verilator.
+  - SystemVerilog transaction recording for waveform viewers; the Python
+    pyUVM 4.0.1 recording backend remains a stub.
+- **Checking and regression evidence**
+  - CHI protocol checking on both the requester-facing and MC SN-facing links,
+    with per-rule pass/fail tallies, severity control, vacuity reporting, and
+    opcode evidence exported for cross-run analysis.
+  - Python uses the corresponding `sva.bind_chi` checker implementation, so
+    the two flows exercise the same protocol-checking intent despite different
+    simulator interfaces.
+  - Directed tests cover CHI-D, CHI-E, separated reads, split and zero writes,
+    DECERR, unsupported operations, persistence, narrow transfers, protocol
+    equivalence, and mixed AXI4+CHI traffic alongside the AXI4, scheduling,
+    refresh, ECC, reset, and observability suites.
+
+Scope boundary: this is a behavioral memory-controller VIP over `vip_dram`, not
+a synthesizable DDR controller or a pin-level PHY model. It does not implement
+the CHI coherent fabric, snoop directory, DVM/stash traffic, or a general
+interconnect. The CHI front-end is the SN memory-target subset described above;
+the detailed open follow-ups are tracked in
+[docs/FURTHER_WORK.md](docs/FURTHER_WORK.md).
 
 ## Documentation map
 

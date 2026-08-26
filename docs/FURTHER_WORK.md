@@ -84,3 +84,15 @@ predictor-vs-observed scoreboard.
 
 Recommended fix: teach `mc_scoreboard` to model coalesced fan-out and ECC-read
 classification so those tests can keep timing checks enabled.
+
+### 6. Complete SystemVerilog validation of the CHI-agent upgrade
+
+The MC CHI front-end is updated for the current `vip_chi_agent` `dev` head, and
+the Python CHI/mixed sweep passes with both endpoint checkers bound and reporting
+their exported tallies. A clean `refuse vcs --clean` compile now passes with the
+UVM-enabled VCS installation. The representative `tc_mc_chi_d_write_read` run
+now also passes with zero UVM errors and fatals after seeding reset before the
+first clock edge. The remaining validation is to run the complete SV CHI
+regression with its checker-vacuity report; VCS emits one non-fatal duplicate
+factory-name warning because the bare `vip_gauss` class is included in both
+agent packages.

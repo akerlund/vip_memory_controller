@@ -151,6 +151,7 @@ from tc_mc_chi_e_read_sep import tc_mc_chi_e_read_sep  # noqa: E402,F401
 from tc_mc_equiv_chi import tc_mc_equiv_chi_d  # noqa: E402,F401
 from tc_mc_equiv_chi import tc_mc_equiv_chi_e  # noqa: E402,F401
 from tc_mc_mixed_concurrent import tc_mc_mixed_concurrent  # noqa: E402,F401
+from tc_mc_mixed_soak import tc_mc_mixed_soak  # noqa: E402,F401
 
 
 _CORE_TESTS = [
@@ -336,6 +337,7 @@ async def _run_uvm(dut, test_name, prefixes=None):
 
 async def _run_chi_uvm(dut, test_name, chi_cfg, mc_chi_cfg_t,
                        rni_prefix="rni_", mc_prefix="mcchi_"):
+  os.environ["VIP_CHI_TESTNAME"] = test_name
   ConfigDB().clear()
   cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
   rni_vif = ChiBus(dut, chi_cfg, Role.RNI, prefix=rni_prefix)
@@ -357,6 +359,7 @@ async def _run_chi_uvm(dut, test_name, chi_cfg, mc_chi_cfg_t,
 
 
 async def _run_mixed_uvm(dut, test_name):
+  os.environ["VIP_CHI_TESTNAME"] = test_name
   ConfigDB().clear()
   cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
   axi4_vif = Axi4Bus(dut, prefix="p0_")
@@ -679,3 +682,8 @@ async def tc_mc_equiv_chi_e(dut):
 @cocotb.test(timeout_time=5, timeout_unit="ms")
 async def tc_mc_mixed_concurrent(dut):
   await _run_mixed_uvm(dut, "tc_mc_mixed_concurrent")
+
+
+@cocotb.test()
+async def tc_mc_mixed_soak(dut):
+  await _run_mixed_uvm(dut, "tc_mc_mixed_soak")

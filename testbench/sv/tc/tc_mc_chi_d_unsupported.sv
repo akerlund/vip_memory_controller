@@ -71,11 +71,12 @@ class tc_mc_chi_d_unsupported extends mc_chi_base_test;
     req        = '0;
     req.opcode = chi_types_t::req_opcode_t'(VIP_CHI_REQ_ATOMIC_STORE_0_C);
     req.addr   = CHI_WRITE_READ_ADDR_C;
-    req.size   = 3'd6;
+    req.size   = 3'd3;
     req.txnid  = 'h7;
     req.srcid  = 'h1;
     req.tgtid  = '0;
     req.qos    = '0;
+    req.allowretry = 1'b1;
 
     raw_seq = vip_chi_raw_seq #(VIP_CHI_CFG_C)::type_id::create("raw_seq");
     raw_seq.set_get_response(1'b0);

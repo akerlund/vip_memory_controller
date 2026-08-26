@@ -86,11 +86,11 @@ class vip_mc_chi_driver #(
   int unsigned sn_node_id = 0;
 
   // CHI runtime knobs (re-implemented locally; NOT vip_chi_cfg_agent). Sourced
-  // from the MC-native vip_mc_chi_cfg at build time -- generous defaults here are
-  // the fallback if no cfg is attached, so the link never starves.
-  int unsigned initial_req_credits = 16;
-  int unsigned initial_rsp_credits = 16;
-  int unsigned initial_dat_credits = 16;
+  // from the MC-native vip_mc_chi_cfg at build time -- protocol-max defaults
+  // here are the fallback if no cfg is attached.
+  int unsigned initial_req_credits = 15;
+  int unsigned initial_rsp_credits = 15;
+  int unsigned initial_dat_credits = 15;
   bit          split_write_rsp     = 1'b1;  // DBIDResp early + deferred Comp
 
   // Inbound receive-credit grant pulses queued toward the RN (one pulse/cycle).
@@ -115,6 +115,20 @@ class vip_mc_chi_driver #(
   protected dat_flit_t dat_send_flit_q[$];
   protected realtime   dat_send_time_q[$];
   protected bit        dat_send_last_q[$];   // last beat of its data message
+
+  // FLITPEND is an announcement for the following cycle. A queued flit is
+  // removed from its pacing queue when announced and held here until it is
+  // actually sent, so every beat (including the first and last) gets its own
+  // one-cycle announcement.
+  protected bit        rsp_announce_valid = 1'b0;
+  protected rsp_flit_t rsp_announce_flit;
+  protected bit        dat_announce_valid = 1'b0;
+  protected dat_flit_t dat_announce_flit;
+  protected bit        dat_announce_last = 1'b0;
+
+  // Number of requests accepted by the SN and not yet retired by a final
+  // completion flit. TXSACTIVE describes this window, not just a send pulse.
+  protected int unsigned tx_activity_count = 0;
 
   // Telemetry (mirrors the AXI4 front-end's observable set where meaningful).
   int unsigned  observed_req_count = 0;
@@ -153,7 +167,7 @@ class vip_mc_chi_driver #(
     end
 
     // Adopt the MC-native CHI knobs (credits / split-write / node id). Keep the
-    // generous member defaults if the top attached no cfg.
+    // protocol-max member defaults if the top attached no cfg.
     if (this.chi_cfg != null) begin
       this.sn_node_id          = this.chi_cfg.sn_node_id;
       this.initial_req_credits = this.chi_cfg.initial_req_credits;
@@ -198,9 +212,9 @@ class vip_mc_chi_driver #(
         continue;
       end
 
-      // Link activation: mirror rxlinkactivereq onto txlinkactiveack; once the
-      // RN raises its request, advertise the initial receive-credit budgets.
-      this.vif.controller_cb.txlinkactiveack <= this.vif.controller_cb.rxlinkactivereq;
+      // Link activation: once the RN raises its request, advertise the initial
+      // receive-credit budgets.
+      this.drive_link_sideband();
       if (!this.link_active) begin
         if (this.vif.controller_cb.rxlinkactivereq) begin
           this.link_active = 1'b1;
@@ -218,8 +232,13 @@ class vip_mc_chi_driver #(
 
       // Consume one inbound REQ, if any.
       if (this.link_active && this.vif.controller_cb.rxreqflitv) begin
-        this.handle_req(this.vif.controller_cb.rxreqflit);
-        this.req_grant_pending++;   // return the consumed REQ credit
+        // An LCRD return occupies a REQ flit but is not a transaction and must
+        // not be answered with another credit grant.
+        if (this.vif.controller_cb.rxreqflit.opcode !=
+            req_opcode_t'(VIP_CHI_REQ_LCRD_RETURN_C)) begin
+          this.handle_req(this.vif.controller_cb.rxreqflit);
+          this.req_grant_pending++;   // return the consumed REQ credit
+        end
       end
 
       // Consume one inbound write-data (or CompAck-bearing RSP) flit, if any.
@@ -286,6 +305,10 @@ class vip_mc_chi_driver #(
     this.dat_send_flit_q.delete();
     this.dat_send_time_q.delete();
     this.dat_send_last_q.delete();
+    this.rsp_announce_valid = 1'b0;
+    this.dat_announce_valid = 1'b0;
+    this.dat_announce_last  = 1'b0;
+    this.tx_activity_count  = 0;
 
     this.req_grant_pending = 0;
     this.rsp_grant_pending = 0;
@@ -328,6 +351,42 @@ class vip_mc_chi_driver #(
     this.dat_grant_pending += this.initial_dat_credits;
   endfunction
 
+  // The MC SN owns a transmit link for its RSP/DAT channels. Keep its request
+  // asserted while the peer asks for the link or while any credit/activity is
+  // still being drained, and acknowledge our own request one cycle later. The
+  // delayed acknowledge preserves the CHI input-race ordering used by the stock
+  // SNF driver.
+  protected function bit link_drained();
+    return (this.req_grant_pending == 0) &&
+           (this.rsp_grant_pending == 0) &&
+           (this.dat_grant_pending == 0) &&
+           (this.rsp_send_credits == 0) &&
+           (this.dat_send_credits == 0) &&
+           (this.rsp_send_flit_q.size() == 0) &&
+           (this.dat_send_flit_q.size() == 0) &&
+           !this.rsp_announce_valid &&
+           !this.dat_announce_valid &&
+           (this.tx_activity_count == 0);
+  endfunction
+
+  protected function void drive_link_sideband();
+    bit want_link;
+
+    if (this.vif.controller_cb.rxlinkactivereq) begin
+      want_link = 1'b1;
+    end
+    else begin
+      want_link = (this.vif.txlinkactivereq || this.vif.txlinkactiveack) &&
+                  !this.link_drained();
+    end
+    if (this.vif.txlinkactivereq && !this.vif.txlinkactiveack) begin
+      want_link = 1'b1;
+    end
+
+    this.vif.controller_cb.txlinkactivereq <= want_link;
+    this.vif.controller_cb.txlinkactiveack <= this.vif.txlinkactivereq;
+  endfunction
+
   // ---------------------------------------------------------------------------
   // Emit one queued inbound credit pulse per channel this cycle.
   // ---------------------------------------------------------------------------
@@ -354,6 +413,7 @@ class vip_mc_chi_driver #(
     logic [6 : 0] op7;
 
     this.observed_req_count++;
+    this.tx_activity_count++;
     op7 = req.opcode;
 
     case (op7)
@@ -483,6 +543,10 @@ class vip_mc_chi_driver #(
     foreach (entry.wdata[i]) entry.wdata[i] = '0;
     foreach (entry.wstrb[i]) entry.wstrb[i] = '1;   // full strobe = write zeros
 
+    // WriteNoSnpZero still uses the normal split write response shape: the RN
+    // must receive a DBID-bearing grant before the final Comp, even though no
+    // write DAT burst follows.
+    this.queue_write_grant(entry);
     if (this.classify_decerr(entry)) begin
       entry.chi_resp_err = VIP_CHI_RESP_ERR_NONDATA_ERROR_E;
       this.enqueue_write_completion(entry);   // local Comp(NONDATA_ERROR)
@@ -494,12 +558,26 @@ class vip_mc_chi_driver #(
   endfunction
 
   // ---------------------------------------------------------------------------
-  // Unsupported opcode: best-effort defined rejection with Comp(NONDATA_ERROR).
+  // Unsupported opcode: best-effort defined rejection with a protocol-correct
+  // completion (Comp or CompData, as required by the request family).
   // ---------------------------------------------------------------------------
   protected function void handle_unsupported_req(input req_flit_t req);
     chi_cmd_t entry;
 
     this.unsupported_count++;
+    if (vip_chi_types_pkg::vip_chi_req_opcode_is_atomic_returning_data(
+          req_opcode_t'(req.opcode))) begin
+      `uvm_warning(get_name(), $sformatf(
+        "Unsupported CHI data-returning atomic opcode 0x%0h (txnid=0x%0h) -> CompData(NONDATA_ERROR)",
+        req.opcode, req.txnid))
+      entry = this.new_entry_from_req(req, VIP_DRAM_OP_RD_E);
+      entry.chi_resp_err = VIP_CHI_RESP_ERR_NONDATA_ERROR_E;
+      entry.pre_resolved = 1'b1;
+      entry.first_beat_ready_time = $realtime;
+      entry.last_beat_ready_time  = $realtime;
+      this.enqueue_read_completion(entry);
+      return;
+    end
     `uvm_warning(get_name(), $sformatf(
       "Unsupported CHI REQ opcode 0x%0h (txnid=0x%0h) -> Comp(NONDATA_ERROR)",
       req.opcode, req.txnid))
@@ -830,10 +908,23 @@ class vip_mc_chi_driver #(
     f.opcode   = rsp_opcode_t'(opcode);
     f.tgtid    = node_id_t'(entry.chi_srcid);   // back to the requester
     f.srcid    = node_id_t'(entry.chi_tgtid);   // echo the requester's target id
-    f.txnid    = txn_id_t'(entry.chi_txnid);
+    f.txnid    = (opcode == VIP_CHI_RSP_PERSIST_E) ? '0 :
+                 txn_id_t'(entry.chi_txnid);
     f.dbid     = txn_id_t'(entry.chi_dbid);
     f.resp     = VIP_CHI_RESP_STATE_I_E;
     f.resperr  = vip_chi_resp_err_t'(entry.chi_resp_err);
+    if ((opcode == VIP_CHI_RSP_DBID_RESP_E) ||
+        (opcode == VIP_CHI_RSP_DBID_RESP_ORD_E)) begin
+      f.resperr = VIP_CHI_RESP_ERR_NORMAL_OKAY_E;
+    end
+    // Table A-4 requires the cache-state field to be zero on write grants and
+    // completions. I is already the zero encoding, kept explicit here so the
+    // intent remains local to this builder.
+    if (entry.chi_is_write &&
+        ((opcode == VIP_CHI_RSP_COMP_E) ||
+         (opcode == VIP_CHI_RSP_COMP_DBID_RESP_E))) begin
+      f.resp = VIP_CHI_RESP_STATE_I_E;
+    end
     f.qos      = entry.chi_qos[3 : 0];
     return f;
   endfunction
@@ -924,6 +1015,42 @@ class vip_mc_chi_driver #(
     this.dat_send_last_q.push_back(is_last);
   endfunction
 
+  // Reserve one response flit and announce it. The credit is spent only when
+  // the reserved flit is transmitted on the next cycle.
+  protected function bit announce_rsp_flit();
+    if ((this.rsp_send_flit_q.size() == 0) ||
+        (this.rsp_send_credits == 0) ||
+        !this.send_time_reached(this.rsp_send_time_q[0])) begin
+      return 1'b0;
+    end
+    this.rsp_announce_flit  = this.rsp_send_flit_q.pop_front();
+    void'(this.rsp_send_time_q.pop_front());
+    this.rsp_announce_valid = 1'b1;
+    return 1'b1;
+  endfunction
+
+  // Reserve one data flit and announce it. The data-message last bit is held
+  // with the flit because FLITPEND on the transmitted beat is the announcement
+  // for the next beat, not a marker describing the current beat.
+  protected function bit announce_dat_flit();
+    if ((this.dat_send_flit_q.size() == 0) ||
+        (this.dat_send_credits == 0) ||
+        !this.send_time_reached(this.dat_send_time_q[0])) begin
+      return 1'b0;
+    end
+    this.dat_announce_flit  = this.dat_send_flit_q.pop_front();
+    void'(this.dat_send_time_q.pop_front());
+    this.dat_announce_last  = this.dat_send_last_q.pop_front();
+    this.dat_announce_valid = 1'b1;
+    return 1'b1;
+  endfunction
+
+  protected function bit rsp_flit_closes_activity(input rsp_flit_t f);
+    return ((rsp_opcode_t'(f.opcode) == rsp_opcode_t'(VIP_CHI_RSP_COMP_E)) ||
+            (rsp_opcode_t'(f.opcode) == rsp_opcode_t'(VIP_CHI_RSP_COMP_DBID_RESP_E)) ||
+            (rsp_opcode_t'(f.opcode) == rsp_opcode_t'(VIP_CHI_RSP_COMP_PERSIST_E)));
+  endfunction
+
   // ---------------------------------------------------------------------------
   // Return whether a queued flit whose head ready time is `t` may be driven now.
   // ---------------------------------------------------------------------------
@@ -945,25 +1072,29 @@ class vip_mc_chi_driver #(
     sending          = 1'b0;
     sending_resp_sep = 1'b0;
 
-    // Response channel.
-    if ((this.rsp_send_flit_q.size() > 0) &&
-        (this.rsp_send_credits > 0) &&
-        this.send_time_reached(this.rsp_send_time_q[0])) begin
+    // Response channel. A pending response is sent now; otherwise reserve and
+    // announce the next ready flit for the following cycle.
+    this.vif.controller_cb.txrspflitpend <= 1'b0;
+    this.vif.controller_cb.txrspflitv    <= 1'b0;
+    if (this.rsp_announce_valid) begin
       rsp_flit_t f;
-      f = this.rsp_send_flit_q.pop_front();
-      void'(this.rsp_send_time_q.pop_front());
+      f = this.rsp_announce_flit;
       this.rsp_send_credits--;
       this.vif.controller_cb.txrspflit    <= f;
-      this.vif.controller_cb.txrspflitpend <= 1'b0;
       this.vif.controller_cb.txrspflitv   <= 1'b1;
+      this.rsp_announce_valid = 1'b0;
       sending = 1'b1;
+      if (this.rsp_flit_closes_activity(f) && (this.tx_activity_count != 0)) begin
+        this.tx_activity_count--;
+      end
       // A separated read's RespSepData response leg is going out this cycle.
       if (rsp_opcode_t'(f.opcode) == rsp_opcode_t'(VIP_CHI_RSP_RESP_SEP_DATA_E)) begin
         sending_resp_sep = 1'b1;
       end
     end
-    else begin
-      this.vif.controller_cb.txrspflitv <= 1'b0;
+    else if (this.announce_rsp_flit()) begin
+      this.vif.controller_cb.txrspflit    <= this.rsp_announce_flit;
+      this.vif.controller_cb.txrspflitpend <= 1'b1;
     end
 
     // Data channel. Hold a separated read's DataSepResp for one cycle when its
@@ -975,28 +1106,42 @@ class vip_mc_chi_driver #(
     // guarantees the requester is already waiting on DAT when it is driven.
     // (Assumes the RSP leg is not itself credit-starved in that cycle, which
     // holds for the granted initial RSP credit budget.)
-    if ((this.dat_send_flit_q.size() > 0) &&
-        (this.dat_send_credits > 0) &&
-        this.send_time_reached(this.dat_send_time_q[0]) &&
-        !(sending_resp_sep &&
-          (dat_opcode_t'(this.dat_send_flit_q[0].opcode) ==
+    this.vif.controller_cb.txdatflitpend <= 1'b0;
+    this.vif.controller_cb.txdatflitv    <= 1'b0;
+    if (this.dat_announce_valid &&
+        !((sending_resp_sep) &&
+          (dat_opcode_t'(this.dat_announce_flit.opcode) ==
            dat_opcode_t'(VIP_CHI_DAT_DATA_SEP_RESP_E)))) begin
       dat_flit_t f;
-      bit        is_last;
-      f       = this.dat_send_flit_q.pop_front();
-      void'(this.dat_send_time_q.pop_front());
-      is_last = this.dat_send_last_q.pop_front();
+      f       = this.dat_announce_flit;
       this.dat_send_credits--;
       this.vif.controller_cb.txdatflit    <= f;
-      this.vif.controller_cb.txdatflitpend <= !is_last;
+      this.vif.controller_cb.txdatflitpend <= !this.dat_announce_last;
       this.vif.controller_cb.txdatflitv   <= 1'b1;
+      this.dat_announce_valid = 1'b0;
       sending = 1'b1;
+      if (this.dat_announce_last && (this.tx_activity_count != 0)) begin
+        this.tx_activity_count--;
+      end
     end
-    else begin
-      this.vif.controller_cb.txdatflitv <= 1'b0;
+    else if (!this.dat_announce_valid &&
+             !(sending_resp_sep &&
+               (this.dat_send_flit_q.size() > 0) &&
+               (dat_opcode_t'(this.dat_send_flit_q[0].opcode) ==
+                dat_opcode_t'(VIP_CHI_DAT_DATA_SEP_RESP_E)))) begin
+      if (this.announce_dat_flit()) begin
+        this.vif.controller_cb.txdatflit    <= this.dat_announce_flit;
+        this.vif.controller_cb.txdatflitpend <= 1'b1;
+      end
     end
 
-    this.vif.controller_cb.txsactive <= sending;
+    // Keep an announced data flit announced while a separated response leg
+    // temporarily blocks its send cycle.
+    if (this.dat_announce_valid && sending_resp_sep) begin
+      this.vif.controller_cb.txdatflitpend <= 1'b1;
+    end
+
+    this.vif.controller_cb.txsactive <= ((this.tx_activity_count != 0) || sending);
   endfunction
 
   // ---------------------------------------------------------------------------

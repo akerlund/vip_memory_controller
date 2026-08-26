@@ -50,7 +50,8 @@ the **same source** builds the CHI-D slice (default), the CHI-E slice
 (`VIP_CHI_CFG_N32_C`). A CHI-E or narrow test is just a
 `mc_chi_base_test #(...)` leaf specialized to that cfg pair.
 
-**Self-contained mixed env** — `tc_mc_mixed_concurrent` (extends `uvm_test`)
+**Self-contained mixed env** — `tc_mc_mixed_concurrent` and
+`tc_mc_mixed_soak` (extend `uvm_test`)
 → `mc_mixed_tb_env`: one `vip_mc #(DRAM_CFG_C, 2, MIXED_PORTS_C)` with port 0
 AXI4 (on `man_vif0`) and port 1 CHI-D (on `rni_vif`) over one shared `vip_dram`,
 plus the stock `vip_axi4` MANAGER and `vip_chi` RN-I agents that drive them.

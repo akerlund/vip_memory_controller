@@ -40,10 +40,12 @@ class vip_mc_chi_cfg extends uvm_object;
 
   // Initial inbound receive-credit budgets the SN advertises after link
   // activation: REQ lets the RN send requests, DAT lets it send write data, RSP
-  // lets it send CompAck. Each must be >= 1 for the link to make progress.
-  int initial_req_credits = 16;
-  int initial_rsp_credits = 16;
-  int initial_dat_credits = 16;
+  // lets it send CompAck. Fifteen is the CHI protocol maximum. The values are
+  // intentionally still configurable above that maximum so a negative-control
+  // test can model a broken peer and prove the checker catches it.
+  int initial_req_credits = 15;
+  int initial_rsp_credits = 15;
+  int initial_dat_credits = 15;
 
   // Write-response style: 1 = split (DBIDResp early to release write data, then a
   // deferred Comp paced to the device); 0 = combined (single CompDBIDResp).
@@ -73,6 +75,23 @@ class vip_mc_chi_cfg extends uvm_object;
     if (this.initial_dat_credits < 1) begin
       `uvm_fatal(get_name(), $sformatf(
         "initial_dat_credits must be >= 1 (got %0d)", this.initial_dat_credits))
+    end
+    // Keep values above the CHI maximum representable for negative-control
+    // tests. Normal configurations use the protocol-max default of 15.
+    if (this.initial_req_credits > 15) begin
+      `uvm_warning("VIP_MC_CHI_CFG", $sformatf(
+        "initial_req_credits (%0d) exceeds the CHI maximum of 15; retained for checker-negative testing",
+        this.initial_req_credits))
+    end
+    if (this.initial_rsp_credits > 15) begin
+      `uvm_warning("VIP_MC_CHI_CFG", $sformatf(
+        "initial_rsp_credits (%0d) exceeds the CHI maximum of 15; retained for checker-negative testing",
+        this.initial_rsp_credits))
+    end
+    if (this.initial_dat_credits > 15) begin
+      `uvm_warning("VIP_MC_CHI_CFG", $sformatf(
+        "initial_dat_credits (%0d) exceeds the CHI maximum of 15; retained for checker-negative testing",
+        this.initial_dat_credits))
     end
   endfunction
 

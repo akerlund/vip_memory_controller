@@ -24,6 +24,10 @@
 
 from __future__ import annotations
 
+import os
+
+import cocotb
+from cocotb.triggers import FallingEdge
 from pyuvm import ConfigDB, UVMConfigItemNotFound, uvm_env
 
 from vip_axi4_agent import vip_axi4_agent
@@ -42,6 +46,7 @@ from vip_mc_axi4_vif_holder import vip_mc_axi4_vif_holder
 from vip_mc_chi_vif_holder import vip_mc_chi_vif_holder
 from vip_mc_env_cfg import vip_mc_env_cfg
 from vip_mc_types_pkg import VipMcPortCfgT, VipMcProto
+from sva.bind_chi import bind_chi
 
 
 class mc_mixed_tb_env(uvm_env):
@@ -66,6 +71,8 @@ class mc_mixed_tb_env(uvm_env):
     self.rni_agent = None
     self.axi4_coverage = None
     self.chi_coverage = None
+    self.rni_sva = None
+    self.mc_snf_sva = None
 
   def build_phase(self):
     self._resolve_config()
@@ -118,6 +125,8 @@ class mc_mixed_tb_env(uvm_env):
     ConfigDB().set(self, "rni_agent", "role", Role.RNI)
     ConfigDB().set(self, "rni_agent", "vif", self.rni_vif)
     self.rni_agent = vip_chi_agent("rni_agent", self)
+    self.rni_sva = bind_chi(self.rni_vif, "rni_sva")
+    self.mc_snf_sva = bind_chi(self.mc_chi_vif, "mc_snf_sva")
 
     self._build_coverage()
 
@@ -147,6 +156,30 @@ class mc_mixed_tb_env(uvm_env):
       self.rni_agent.req_port.connect(self.chi_coverage.rni_req_cov_port)
       self.rni_agent.rsp_port.connect(self.chi_coverage.rni_rsp_cov_port)
       self.rni_agent.dat_port.connect(self.chi_coverage.rni_dat_cov_port)
+
+  async def run_phase(self):
+    cocotb.start_soon(self.rni_sva.run())
+    cocotb.start_soon(self.mc_snf_sva.run())
+
+    while True:
+      await FallingEdge(self.rni_vif.rst_n)
+
+  def report_phase(self):
+    csv_path = os.environ.get("VIP_CHI_CHECK_CSV", "")
+    opcode_csv = os.environ.get("VIP_CHI_OPCODE_CSV", "")
+    run_name = os.environ.get("VIP_CHI_TESTNAME", "") or "unknown"
+
+    for checker in (self.rni_sva, self.mc_snf_sva):
+      checker.report(self.logger)
+      if csv_path:
+        checker.export_check_csv(csv_path, run_name)
+      if opcode_csv:
+        checker.export_opcode_csv(opcode_csv, run_name)
+
+    total = self.rni_sva.errors + self.mc_snf_sva.errors
+    assert total == 0, (
+        f"CHI protocol checkers reported {total} violation(s): "
+        f"rni_sva={self.rni_sva.errors} mc_snf_sva={self.mc_snf_sva.errors}")
 
   def _resolve_config(self) -> None:
     self.axi4_vif = ConfigDB().get(self, "", "axi4_vif")

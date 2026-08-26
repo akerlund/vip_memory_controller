@@ -27,6 +27,10 @@
 
 from __future__ import annotations
 
+import os
+
+import cocotb
+from cocotb.triggers import FallingEdge
 from pyuvm import ConfigDB, UVMConfigItemNotFound, uvm_env, uvm_subscriber
 
 from vip_chi_agent import vip_chi_agent
@@ -42,6 +46,7 @@ from vip_mc import vip_mc
 from vip_mc_chi_vif_holder import vip_mc_chi_vif_holder
 from vip_mc_env_cfg import vip_mc_env_cfg
 from vip_mc_types_pkg import VipMcPortCfgT, VipMcProto
+from sva.bind_chi import bind_chi
 
 
 CHI_DECERR_LO_C = 0x0003_0000
@@ -76,6 +81,8 @@ class mc_chi_tb_env(uvm_env):
     self.rni_cfg = None
     self.rni_agent = None
     self.coverage = None
+    self.rni_sva = None
+    self.mc_snf_sva = None
     self.rni_req_observations = []
     self.rni_rsp_observations = []
     self.rni_dat_observations = []
@@ -97,6 +104,10 @@ class mc_chi_tb_env(uvm_env):
     ConfigDB().set(self, "rni_agent", "role", Role.RNI)
     ConfigDB().set(self, "rni_agent", "vif", self.rni_vif)
     self.rni_agent = vip_chi_agent("rni_agent", self)
+    # The MC bus is already a standard SNF-shaped ChiBus in the Python port,
+    # so both endpoint checkers can observe the live link directly.
+    self.rni_sva = bind_chi(self.rni_vif, "rni_sva")
+    self.mc_snf_sva = bind_chi(self.mc_chi_vif, "mc_snf_sva")
 
     port_cfg = VipMcPortCfgT(proto=VipMcProto.CHI, chi=self.mc_chi_cfg_t)
     self.env_cfg = vip_mc_env_cfg(
@@ -142,6 +153,30 @@ class mc_chi_tb_env(uvm_env):
           f"rni_{kind}_collector", self, observations)
       port.connect(collector.analysis_export)
       self.observation_collectors.append(collector)
+
+  async def run_phase(self):
+    cocotb.start_soon(self.rni_sva.run())
+    cocotb.start_soon(self.mc_snf_sva.run())
+
+    while True:
+      await FallingEdge(self.rni_vif.rst_n)
+
+  def report_phase(self):
+    csv_path = os.environ.get("VIP_CHI_CHECK_CSV", "")
+    opcode_csv = os.environ.get("VIP_CHI_OPCODE_CSV", "")
+    run_name = os.environ.get("VIP_CHI_TESTNAME", "") or "unknown"
+
+    for checker in (self.rni_sva, self.mc_snf_sva):
+      checker.report(self.logger)
+      if csv_path:
+        checker.export_check_csv(csv_path, run_name)
+      if opcode_csv:
+        checker.export_opcode_csv(opcode_csv, run_name)
+
+    total = self.rni_sva.errors + self.mc_snf_sva.errors
+    assert total == 0, (
+        f"CHI protocol checkers reported {total} violation(s): "
+        f"rni_sva={self.rni_sva.errors} mc_snf_sva={self.mc_snf_sva.errors}")
 
   def clear_rni_observations(self) -> None:
     self.rni_req_observations.clear()

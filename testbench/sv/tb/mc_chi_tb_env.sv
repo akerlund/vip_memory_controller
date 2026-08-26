@@ -59,6 +59,7 @@ class mc_chi_tb_env #(
   typedef vip_mc_chi_vif_holder #(MC_CHI_CFG_P)                       holder_l_t;
 
   virtual vip_mc_chi_if #(MC_CHI_CFG_P) _mc_vif;
+  virtual vip_chi_if #(CHI_CFG_P, chi_types_l_t, VIP_CHI_ROLE_SNF_E) _mc_check_vif;
   virtual clk_rst_if                    _clk_rst_vif;
 
   env_cfg_l_t                           env_cfg;
@@ -99,6 +100,11 @@ class mc_chi_tb_env #(
     if (!uvm_config_db #(virtual vip_mc_chi_if #(MC_CHI_CFG_P))::get(
       this, "", "mc_chi_vif", this._mc_vif)) begin
       `uvm_fatal(get_name(), "vip_mc CHI example env requires mc_chi_vif from mc_tb_top")
+    end
+    if (!uvm_config_db #(virtual vip_chi_if #(
+      CHI_CFG_P, chi_types_l_t, VIP_CHI_ROLE_SNF_E))::get(
+      this, "", "mc_chi_check_vif", this._mc_check_vif)) begin
+      `uvm_fatal(get_name(), "vip_mc CHI example env requires mc_chi_check_vif from mc_tb_top")
     end
 
     // Device model (TB-owned; passed to vip_mc via env_cfg).
@@ -167,6 +173,28 @@ class mc_chi_tb_env #(
     this.rni_agent.req_port.connect(this.coverage.rni_req_cov_port);
     this.rni_agent.rsp_port.connect(this.coverage.rni_rsp_cov_port);
     this.rni_agent.dat_port.connect(this.coverage.rni_dat_cov_port);
+  endfunction
+
+  // Turn SVA's otherwise advisory $error output into the environment's UVM
+  // verdict, and export both endpoints so regression vacuity is visible.
+  function void report_phase(input uvm_phase phase);
+    super.report_phase(phase);
+
+    chi_check_export_csv("rni_sva", CHI_CHECK_SCOPE_MAIN_E,
+      this.rni_agent.vif.check_enabled, this.rni_agent.vif.check_severity,
+      this.rni_agent.vif.check_pass_count, this.rni_agent.vif.check_fail_count);
+    chi_check_export_opcode_csv("rni_sva", this.rni_agent.vif.req_opcode_seen);
+    chi_check_report_tallies("rni_sva", CHI_CHECK_SCOPE_MAIN_E,
+      this.rni_agent.vif.check_enabled, this.rni_agent.vif.check_severity,
+      this.rni_agent.vif.check_pass_count, this.rni_agent.vif.check_fail_count);
+
+    chi_check_export_csv("mc_snf_sva", CHI_CHECK_SCOPE_MAIN_E,
+      this._mc_check_vif.check_enabled, this._mc_check_vif.check_severity,
+      this._mc_check_vif.check_pass_count, this._mc_check_vif.check_fail_count);
+    chi_check_export_opcode_csv("mc_snf_sva", this._mc_check_vif.req_opcode_seen);
+    chi_check_report_tallies("mc_snf_sva", CHI_CHECK_SCOPE_MAIN_E,
+      this._mc_check_vif.check_enabled, this._mc_check_vif.check_severity,
+      this._mc_check_vif.check_pass_count, this._mc_check_vif.check_fail_count);
   endfunction
 
 endclass

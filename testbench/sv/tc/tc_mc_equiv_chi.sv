@@ -72,7 +72,6 @@ class mc_equiv_chi_base_test #(
         this._rd_seq.set_requests(1);
         this._rd_seq.set_initial_addr(item_t::addr_t'(t.addr));
         this._rd_seq.set_size(3'($clog2(t.nbytes)));
-        this._rd_seq.set_allow_retry(1'b0);
         this._rd_seq.set_get_response(1'b1);
         this._rd_seq.set_verbose(1'b0);
         this._rd_seq.start(this._env.rni_agent.sequencer);
@@ -100,7 +99,6 @@ class mc_equiv_chi_base_test #(
         this._wr_seq.set_requests(1);
         this._wr_seq.set_initial_addr(item_t::addr_t'(t.addr));
         this._wr_seq.set_size(3'($clog2(t.nbytes)));
-        this._wr_seq.set_allow_retry(1'b0);
         this._wr_seq.set_data_type(VIP_CHI_DATA_CUSTOM_E);
         this._wr_seq.set_data(data_q);
         if (t.op == EQ_WRITE_PTL_E) begin

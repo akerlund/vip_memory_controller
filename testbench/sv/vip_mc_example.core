@@ -12,11 +12,14 @@ filesets:
       # vip_mc core and are reached through its +incdir+.
       - tb/mc_equiv_model.sv:                 {is_include_file: true}
       - tb/mc_equiv_program.sv:               {is_include_file: true}
-      - tb/mc_scoreboard.sv:                      {is_include_file: true}
+      - tb/mc_scoreboard.sv:                  {is_include_file: true}
       - tb/mc_soak_gen.sv:                    {is_include_file: true}
+      - tb/mc_mixed_soak_gen.sv:              {is_include_file: true}
       - tb/mc_coverage.sv:                    {is_include_file: true}
       - tb/mc_tb_env.sv:                      {is_include_file: true}
       - tb/mc_chi_tb_env.sv:                  {is_include_file: true}
+      - tb/mc_chi_sva_probe.sv:               {is_include_file: true}
+      - tb/mc_chi_check_report.svh:           {is_include_file: true}
       - tb/mc_mixed_tb_env.sv:                {is_include_file: true}
       - tb/mc_narrow_axi4_tb_env.sv:          {is_include_file: true}
       - tb/mc_tb_pkg.sv:                      {is_include_file: true}
@@ -76,6 +79,7 @@ filesets:
       - tc/tc_mc_equiv_axi4.sv:               {is_include_file: true}
       - tc/tc_mc_equiv_chi.sv:                {is_include_file: true}
       - tc/tc_mc_mixed_concurrent.sv:         {is_include_file: true}
+      - tc/tc_mc_mixed_soak.sv:               {is_include_file: true}
       - tc/tc_mc_narrow_axi4.sv:              {is_include_file: true}
       - tc/tc_mc_chi_d_narrow.sv:             {is_include_file: true}
       - tc/mc_tc_pkg.sv:                      {is_include_file: true}
@@ -84,7 +88,7 @@ filesets:
     depend:
       - "akerlund::vip_mc:1.0.0"
       - "akerlund::vip_chi_agent:1.0.0"
-      - "akerlund::vip_axi4_agent:1.2.0"
+      - "akerlund::vip_axi4_agent:3.0.0"
       - "akerlund::vip_clk_rst_agent:0"
       - "akerlund::vip_gauss:1.0.0"
       - "akerlund::vip_report_server:0"
@@ -110,3 +114,4 @@ targets:
           - -timescale=1ns/1ps
           - -ntb_opts
           - uvm-1.2
+          - -licqueue

@@ -100,6 +100,17 @@ This example checks at three independent levels; a test uses whichever apply:
 `vip_dram`'s own SVA travels with the device; `vip_mc` has no separate assertion
 IP in this example.
 
+The shared named regressions live in [../.refuse.yml](../.refuse.yml). Run them
+from this flow directory:
+
+```sh
+refuse simv --list-regressions
+refuse simv --regression mixed
+```
+
+The matching Python command is `refuse verilator --regression mixed` from
+`testbench/py`.
+
 ## Regression inventory
 
 The full, categorized test catalog — every testcase, its harness env, and what
@@ -109,7 +120,8 @@ elaborated walkthrough of `tb_top`, see [UVM_TB.md](UVM_TB.md).
 
 ## Running
 
-All commands run from the repository root.
+The build and single-test commands below run from the repository root. Named
+`refuse` regressions run from `testbench/sv` as shown above.
 
 Build the example (clean):
 
